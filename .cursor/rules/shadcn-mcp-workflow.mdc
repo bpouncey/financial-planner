@@ -1,0 +1,34 @@
+---
+description: Shadcn UI workflow—automatic MCP usage, component/block prioritization, demo-first implementation
+alwaysApply: true
+---
+
+# Shadcn UI MCP Workflow
+
+When asked to work with **Shadcn UI** components (adding, modifying, or building UI with Shadcn):
+
+## 1. Automatic MCP Server Usage
+
+- **Always use the MCP server** for Shadcn-related work. Do not rely solely on training data.
+- Use the available MCP tools to fetch up-to-date documentation, component specs, and code examples for Shadcn UI.
+
+## 2. Planning Phase—Prioritize Existing Components and Blocks
+
+During planning for anything Shadcn-related:
+
+- **Apply existing components first**: Check the project for already-installed Shadcn components and reuse them wherever possible.
+- **Prioritize blocks over custom builds**: Blocks are pre-made, full-context patterns. If a block can fulfill the requirement, prefer it over building from scratch. The MCP has full context for blocks.
+- Search the codebase for `components/ui/` and any Shadcn block usage before proposing new component additions.
+
+## 3. Implementation Phase—Demo Tool First
+
+When actually building or integrating Shadcn components:
+
+1. **Call the demo tool first** (or equivalent MCP tool that shows component usage).
+2. Use the returned demo/example to understand:
+   - Correct import paths and props
+   - Recommended composition and patterns
+   - Styling and variant usage
+3. **Then** apply that information in the actual code.
+
+Do not implement Shadcn components from memory alone—always verify usage via the MCP before writing code.

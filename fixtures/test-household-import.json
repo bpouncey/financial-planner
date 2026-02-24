@@ -1,0 +1,165 @@
+{
+  "id": "household-1",
+  "name": "My Household",
+  "startYear": 2026,
+  "currency": "USD",
+  "people": [
+    {
+      "id": "person-a",
+      "name": "Jillian",
+      "income": {
+        "baseSalaryAnnual": 190000,
+        "salaryGrowthRate": 0,
+        "salaryGrowthIsReal": true
+      },
+      "payroll": {
+        "payrollInvesting": [
+          {
+            "accountId": "acc-gsk-401k",
+            "amountMonthly": 2475
+          }
+        ],
+        "payrollDeductionsSpending": 0
+      }
+    },
+    {
+      "id": "person-b",
+      "name": "Brad",
+      "income": {
+        "baseSalaryAnnual": 96500,
+        "salaryGrowthRate": 0,
+        "salaryGrowthIsReal": true
+      },
+      "payroll": {
+        "payrollInvesting": [
+          {
+            "accountId": "acc-guideline-401k",
+            "amountMonthly": 111.35
+          },
+          {
+            "accountId": "acc-guideline-roth",
+            "amountMonthly": 74.23
+          }
+        ],
+        "payrollDeductionsSpending": 0
+      }
+    }
+  ],
+  "accounts": [
+    {
+      "id": "acc-vumc-403b",
+      "name": "VUMC 403B",
+      "type": "TRADITIONAL",
+      "owner": "PERSON_A",
+      "startingBalance": 8153.04,
+      "includedInFIAssets": true
+    },
+    {
+      "id": "acc-duke-vested",
+      "name": "Duke (vested only)",
+      "type": "TRADITIONAL",
+      "owner": "PERSON_A",
+      "startingBalance": 4856.75,
+      "includedInFIAssets": true
+    },
+    {
+      "id": "acc-traditional-ira-ah",
+      "name": "Traditional IRA (AH)",
+      "type": "TRADITIONAL",
+      "owner": "PERSON_A",
+      "startingBalance": 22199.89,
+      "includedInFIAssets": true
+    },
+    {
+      "id": "acc-gsk-401k",
+      "name": "GSK 401k Plan",
+      "type": "TRADITIONAL",
+      "owner": "PERSON_A",
+      "startingBalance": 98000,
+      "includedInFIAssets": true
+    },
+    {
+      "id": "acc-fidelity-reskill",
+      "name": "Fidelity (Reskill)",
+      "type": "TRADITIONAL",
+      "owner": "PERSON_B",
+      "startingBalance": 15173.88,
+      "includedInFIAssets": true
+    },
+    {
+      "id": "acc-guideline-401k",
+      "name": "Guideline (Patch - 401k)",
+      "type": "TRADITIONAL",
+      "owner": "PERSON_B",
+      "startingBalance": 7704.4,
+      "includedInFIAssets": true
+    },
+    {
+      "id": "acc-guideline-roth",
+      "name": "Guideline (Patch - Roth)",
+      "type": "ROTH",
+      "owner": "PERSON_B",
+      "startingBalance": 2203.29,
+      "includedInFIAssets": true
+    },
+    {
+      "id": "acc-jillian-rsu",
+      "name": "Jillian RSU Stock Plan",
+      "type": "TAXABLE",
+      "owner": "PERSON_A",
+      "startingBalance": 0,
+      "includedInFIAssets": true
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "base",
+      "name": "Base",
+      "modelingMode": "REAL",
+      "nominalReturn": 0.07,
+      "inflation": 0.03,
+      "effectiveTaxRate": null,
+      "takeHomeAnnual": null,
+      "swr": 0.03,
+      "retirementMonthlySpend": 5000,
+      "currentMonthlySpend": 5000,
+      "retirementAgeTarget": 65,
+      "salaryGrowthOverride": null,
+      "includeEmployerMatch": false
+    },
+    {
+      "id": "conservative",
+      "name": "Conservative",
+      "modelingMode": "REAL",
+      "nominalReturn": 0.05,
+      "inflation": 0.03,
+      "effectiveTaxRate": null,
+      "takeHomeAnnual": null,
+      "swr": 0.03,
+      "retirementMonthlySpend": 5000,
+      "currentMonthlySpend": 5000,
+      "retirementAgeTarget": 65,
+      "salaryGrowthOverride": null,
+      "includeEmployerMatch": false
+    }
+  ],
+  "outOfPocketInvesting": [
+    {
+      "accountId": "acc-guideline-401k",
+      "amountMonthly": 550
+    }
+  ],
+  "events": [],
+  "equityGrants": [
+    {
+      "id": "rsu-jillian-1",
+      "ownerPersonId": "person-a",
+      "type": "RSU",
+      "startYear": 2027,
+      "vestingTable": [{ "year": 2027, "shares": 2153 }],
+      "priceAssumption": { "mode": "GROWTH", "growthRate": 0.05 },
+      "withholdingRate": 0.22,
+      "destinationAccountId": "acc-jillian-rsu"
+    }
+  ]
+}

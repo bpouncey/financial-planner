@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+/* Light mode (default) - mauve/stone neutrals */
+:root {
+  --background: oklch(0.985 0 0);
+  --foreground: oklch(0.145 0.008 326);
+  --surface: oklch(0.985 0 0);
+  --surface-elevated: oklch(0.96 0.003 325.6);
+  --content: oklch(0.145 0.008 326);
+  --content-muted: oklch(0.435 0.029 321.78);
+  --border: oklch(0.922 0.005 325.62);
+  --primary: oklch(0.596 0.145 163.225);
+  --primary-muted: oklch(0.696 0.17 162.48);
+  --accent: oklch(0.623 0.214 259.815);
+  --success: oklch(0.596 0.145 163.225);
+  --success-foreground: oklch(0.99 0 0);
+  --info: oklch(0.546 0.245 262.881);
+  --info-foreground: oklch(0.99 0 0);
+  /* Type column tints for year-by-year table (header + cell) */
+  --type-contrib-bg: oklch(0.94 0.04 165);
+  --type-withdrawal-bg: oklch(0.94 0.06 75);
+  --type-growth-bg: oklch(0.92 0.06 250);
+  --type-end-bg: oklch(0.92 0.08 280);
+  --type-contrib-cell: oklch(0.97 0.02 165);
+  --type-withdrawal-cell: oklch(0.97 0.03 75);
+  --type-growth-cell: oklch(0.96 0.03 250);
+  --type-end-cell: oklch(0.96 0.04 280);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.145 0.008 326);
+    --foreground: oklch(0.985 0 0);
+    --surface: oklch(0.145 0.008 326);
+    --surface-elevated: oklch(0.212 0.019 322.12);
+    --content: oklch(0.985 0 0);
+    --content-muted: oklch(0.711 0.019 323.02);
+    --border: oklch(0.263 0.024 320.12);
+    --primary: oklch(0.696 0.17 162.48);
+    --primary-muted: oklch(0.765 0.177 163.223);
+    --accent: oklch(0.707 0.165 254.624);
+    --success: oklch(0.696 0.17 162.48);
+    --success-foreground: oklch(0.145 0.008 326);
+    --info: oklch(0.546 0.245 262.881);
+    --info-foreground: oklch(0.99 0 0);
+    /* Type column tints for year-by-year table (header + cell) */
+    --type-contrib-bg: oklch(0.25 0.04 165);
+    --type-withdrawal-bg: oklch(0.25 0.06 75);
+    --type-growth-bg: oklch(0.24 0.06 250);
+    --type-end-bg: oklch(0.24 0.08 280);
+    --type-contrib-cell: oklch(0.22 0.02 165);
+    --type-withdrawal-cell: oklch(0.22 0.03 75);
+    --type-growth-cell: oklch(0.21 0.03 250);
+    --type-end-cell: oklch(0.21 0.04 280);
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-content: var(--content);
+  --color-content-muted: var(--content-muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-muted: var(--primary-muted);
+  --color-accent: var(--accent);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --font-sans: var(--font-geist-sans, ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");
+  --font-mono: var(--font-geist-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
