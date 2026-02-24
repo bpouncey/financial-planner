@@ -141,14 +141,24 @@ export const PersonSchema = z.object({
 });
 export type Person = z.infer<typeof PersonSchema>;
 
-export const AccountTypeSchema = z.enum([
-  "CASH",
-  "TAXABLE",
-  "MONEY_MARKET",
-  "TRADITIONAL",
-  "403B",
-  "ROTH",
-  "HSA",
+/** Legacy types for migration: TRADITIONAL → TRADITIONAL_401K, ROTH → ROTH_IRA */
+const LegacyAccountTypeSchema = z
+  .enum(["TRADITIONAL", "ROTH"])
+  .transform((v) => (v === "TRADITIONAL" ? "TRADITIONAL_401K" : "ROTH_IRA"));
+
+export const AccountTypeSchema = z.union([
+  z.enum([
+    "CASH",
+    "TAXABLE",
+    "MONEY_MARKET",
+    "TRADITIONAL_401K",
+    "ROTH_401K",
+    "TRADITIONAL_IRA",
+    "ROTH_IRA",
+    "403B",
+    "HSA",
+  ]),
+  LegacyAccountTypeSchema,
 ]);
 export type AccountType = z.infer<typeof AccountTypeSchema>;
 
@@ -164,6 +174,8 @@ export const AccountSchema = z.object({
   includedInFIAssets: z.boolean().default(true),
   /** APY (Annual Percentage Yield) as decimal, e.g. 0.045 for 4.5%. Only used for MONEY_MARKET accounts; growth uses this instead of scenario return. */
   apy: z.number().min(0).max(0.5).optional(),
+  /** Whether this is an employer-sponsored plan (401k, 403b, Roth 401k). Used for FOO Employer Match step tracking. IRAs are not employer-sponsored. */
+  isEmployerSponsored: z.boolean().optional(),
 });
 export type Account = z.infer<typeof AccountSchema>;
 
@@ -188,7 +200,7 @@ export const ScenarioSchema = z.object({
   retirementStartYear: z.number().optional(),
   withdrawalOrder: z
     .array(AccountTypeSchema)
-    .default(["TAXABLE", "MONEY_MARKET", "TRADITIONAL", "403B", "ROTH"]),
+    .default(["TAXABLE", "MONEY_MARKET", "TRADITIONAL_401K", "TRADITIONAL_IRA", "403B", "ROTH_401K", "ROTH_IRA"]),
   stressTestFirstYearReturn: z.number().nullable().optional(),
   retirementEffectiveTaxRate: z.number().min(0).max(1).optional(),
   contributionOverrides: z.array(ContributionOverrideSchema).optional().default([]),

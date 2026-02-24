@@ -10,6 +10,8 @@ import { ContributionLimitIndicator } from "@/components/contribution-limit-indi
 import {
   getContributionsByAccount,
   getContributionsBreakdown,
+  getContributionsByPersonAndBucket,
+  getContributionsBreakdownByPersonAndBucket,
   LIMITED_ACCOUNT_TYPES,
 } from "@/lib/model/contribution-limits";
 import { HELP_ACCOUNTS, formatHelpContent } from "@/lib/copy/help";
@@ -24,18 +26,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 
 const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
   { value: "CASH", label: "Cash" },
   { value: "TAXABLE", label: "Taxable" },
   { value: "MONEY_MARKET", label: "Money Market" },
-  { value: "TRADITIONAL", label: "Traditional (401k/IRA)" },
+  { value: "TRADITIONAL_401K", label: "Traditional 401k" },
+  { value: "ROTH_401K", label: "Roth 401k" },
+  { value: "TRADITIONAL_IRA", label: "Traditional IRA" },
+  { value: "ROTH_IRA", label: "Roth IRA" },
   { value: "403B", label: "403(b)" },
-  { value: "ROTH", label: "Roth" },
   { value: "HSA", label: "HSA" },
 ];
 
 const OWNER_OPTIONS: Owner[] = ["PERSON_A", "PERSON_B", "JOINT"];
+
+function getPersonIdForOwner(
+  people: { id: string }[],
+  owner: Owner
+): string | null {
+  if (owner === "PERSON_A") return people[0]?.id ?? null;
+  if (owner === "PERSON_B") return people[1]?.id ?? null;
+  return null;
+}
 
 function getOwnerLabel(owner: Owner, personAName: string, personBName: string): string {
   switch (owner) {
@@ -50,6 +64,19 @@ function getOwnerLabel(owner: Owner, personAName: string, personBName: string): 
   }
 }
 
+function getOwnerBadgeClass(owner: Owner): string {
+  switch (owner) {
+    case "PERSON_A":
+      return "bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 border-blue-200 dark:border-blue-800";
+    case "PERSON_B":
+      return "bg-violet-100 text-violet-800 dark:bg-violet-950/80 dark:text-violet-300 border-violet-200 dark:border-violet-800";
+    case "JOINT":
+      return "bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border-amber-200 dark:border-amber-800";
+    default:
+      return "";
+  }
+}
+
 interface AccountFormState {
   id: string;
   name: string;
@@ -57,6 +84,7 @@ interface AccountFormState {
   owner: Owner;
   startingBalance: string;
   includedInFIAssets: boolean;
+  isEmployerSponsored: boolean;
   apy: string;
 }
 
@@ -67,6 +95,7 @@ const emptyFormState = (): AccountFormState => ({
   owner: "PERSON_A",
   startingBalance: "0",
   includedInFIAssets: true,
+  isEmployerSponsored: false,
   apy: "",
 });
 
@@ -78,6 +107,7 @@ function formStateFromAccount(a: Account): AccountFormState {
     owner: a.owner,
     startingBalance: String(a.startingBalance),
     includedInFIAssets: a.includedInFIAssets,
+    isEmployerSponsored: a.isEmployerSponsored ?? false,
     apy: a.apy != null ? String(a.apy * 100) : "",
   };
 }
@@ -94,6 +124,9 @@ function parseAccountFromForm(state: AccountFormState): Account | null {
     owner: state.owner,
     startingBalance,
     includedInFIAssets: state.includedInFIAssets,
+    isEmployerSponsored: ["TRADITIONAL_401K", "ROTH_401K", "403B"].includes(state.type)
+      ? state.isEmployerSponsored
+      : undefined,
     apy: state.type === "MONEY_MARKET" ? apy : undefined,
   });
   return result.success ? result.data : null;
@@ -146,6 +179,7 @@ export function AccountsForm() {
         owner: account.owner,
         startingBalance: account.startingBalance,
         includedInFIAssets: account.includedInFIAssets,
+        isEmployerSponsored: account.isEmployerSponsored,
         apy: account.apy,
       });
     } else {
@@ -285,7 +319,7 @@ export function AccountsForm() {
               </FormFieldWithHelp>
             )}
           </div>
-          <div className="mt-4 flex items-center gap-2">
+          <div className="mt-4 flex flex-col gap-3">
             <div className="flex items-center gap-2">
               <Checkbox
                 id="account-included-in-fi"
@@ -297,11 +331,29 @@ export function AccountsForm() {
               <Label htmlFor="account-included-in-fi" className="text-muted-foreground cursor-pointer">
                 Include in FI assets
               </Label>
+              <HelpTooltip
+                content={formatHelpContent(HELP_ACCOUNTS.includedInFIAssets)}
+                side="top"
+              />
             </div>
-            <HelpTooltip
-              content={formatHelpContent(HELP_ACCOUNTS.includedInFIAssets)}
-              side="top"
-            />
+            {["TRADITIONAL_401K", "ROTH_401K", "403B"].includes(formState.type) && (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="account-employer-sponsored"
+                  checked={formState.isEmployerSponsored}
+                  onCheckedChange={(checked) =>
+                    setFormState((s) => ({ ...s, isEmployerSponsored: checked === true }))
+                  }
+                />
+                <Label htmlFor="account-employer-sponsored" className="text-muted-foreground cursor-pointer">
+                  Employer-sponsored (401k, 403b, Roth 401k)
+                </Label>
+                <HelpTooltip
+                  content={formatHelpContent(HELP_ACCOUNTS.isEmployerSponsored)}
+                  side="top"
+                />
+              </div>
+            )}
           </div>
           <div className="mt-4 flex gap-2">
             <Button type="submit" size="sm">
@@ -338,6 +390,39 @@ export function AccountsForm() {
                   )
                 : {};
             const accountBreakdown = breakdown[account.id];
+            const byPersonBucket =
+              scenario != null
+                ? getContributionsByPersonAndBucket(household, contributions)
+                : {};
+            const breakdownByPersonBucket =
+              scenario != null
+                ? getContributionsBreakdownByPersonAndBucket(household, breakdown)
+                : {};
+            const personId = getPersonIdForOwner(household.people, account.owner);
+            const bucket401k = personId ? byPersonBucket[personId]?.["401k"] : undefined;
+            const bucketIra = personId ? byPersonBucket[personId]?.["ira"] : undefined;
+            const is401k =
+              account.type === "TRADITIONAL_401K" ||
+              account.type === "ROTH_401K" ||
+              account.type === "403B";
+            const isIra =
+              account.type === "TRADITIONAL_IRA" || account.type === "ROTH_IRA";
+            const totalInBucket =
+              is401k && bucket401k != null
+                ? bucket401k
+                : isIra && bucketIra != null
+                  ? bucketIra
+                  : undefined;
+            // Only show 401k employee/employer breakdown on accounts that have payroll contributions.
+            // Otherwise we'd show Jillian's total payroll deferral on accounts she doesn't contribute to via payroll.
+            const accountHasPayroll =
+              accountBreakdown != null &&
+              ((accountBreakdown.employee ?? 0) > 0 ||
+                (accountBreakdown.employer ?? 0) > 0);
+            const totalEmployee401k =
+              is401k && personId && accountHasPayroll
+                ? breakdownByPersonBucket[personId]?.employee
+                : undefined;
             const hasLimit = LIMITED_ACCOUNT_TYPES.includes(account.type);
 
             return (
@@ -346,11 +431,19 @@ export function AccountsForm() {
               className="flex flex-col gap-2 rounded-lg border border-border bg-surface-elevated py-3 px-4 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="flex flex-1 flex-col gap-0.5">
-                <span className="font-medium text-content">
-                  {account.name}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-content">
+                    {account.name}
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className={getOwnerBadgeClass(account.owner)}
+                  >
+                    {getOwnerLabel(account.owner, personAName, personBName)}
+                  </Badge>
+                </div>
                 <span className="text-sm text-content-muted">
-                  {account.type} · {getOwnerLabel(account.owner, personAName, personBName)} · $
+                  {ACCOUNT_TYPES.find((t) => t.value === account.type)?.label ?? account.type} · $
                   {account.startingBalance.toLocaleString()}
                   {!account.includedInFIAssets && " · excluded from FI"}
                 </span>
@@ -361,7 +454,15 @@ export function AccountsForm() {
                       accountType={account.type}
                       contributed={contributed}
                       year={household.startYear}
-                      breakdown={accountBreakdown}
+                      breakdown={
+                        is401k && personId && accountHasPayroll
+                          ? breakdownByPersonBucket[personId]
+                          : accountBreakdown
+                      }
+                      totalContributedInBucket={
+                        accountHasPayroll ? totalInBucket : undefined
+                      }
+                      totalEmployeeIn401kBucket={totalEmployee401k}
                       variant="full"
                     />
                   </div>

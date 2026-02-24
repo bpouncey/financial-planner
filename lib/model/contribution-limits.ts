@@ -3,8 +3,10 @@
  * Limits are indexed by year; uses nearest known year for out-of-range.
  * Sources: IRS.gov, cost-of-living adjustments.
  *
- * Note: TRADITIONAL/403B use 401(k) limits; ROTH uses Roth IRA limits.
- * HSA uses family limit (higher). IRA vs 401k distinction not modeled.
+ * - 401k: TRADITIONAL_401K + ROTH_401K share employee deferral limit (~$23.5k).
+ * - IRA: TRADITIONAL_IRA + ROTH_IRA share combined limit (~$7k).
+ * - 403B: separate limit (similar to 401k).
+ * - HSA: family limit (higher).
  */
 
 import type { Household, Scenario, Contribution, Person } from "@/lib/types/zod";
@@ -42,10 +44,12 @@ export function getContributionLimit(
 ): number | null {
   const limits = getLimitsForYear(year);
   switch (accountType) {
-    case "TRADITIONAL":
+    case "TRADITIONAL_401K":
+    case "ROTH_401K":
     case "403B":
       return limits["401k"];
-    case "ROTH":
+    case "TRADITIONAL_IRA":
+    case "ROTH_IRA":
       return limits.ira;
     case "HSA":
       return limits.hsa;
@@ -56,17 +60,26 @@ export function getContributionLimit(
 
 /** Get combined (employee + employer) limit for 401k/403b. Null for other types. */
 export function get401kCombinedLimit(accountType: AccountType, year: number): number | null {
-  if (accountType !== "TRADITIONAL" && accountType !== "403B") return null;
+  if (accountType !== "TRADITIONAL_401K" && accountType !== "ROTH_401K" && accountType !== "403B")
+    return null;
   return getLimitsForYear(year)["401kCombined"];
 }
 
 /** Account types that have legal contribution limits. */
 export const LIMITED_ACCOUNT_TYPES: AccountType[] = [
-  "TRADITIONAL",
+  "TRADITIONAL_401K",
+  "ROTH_401K",
+  "TRADITIONAL_IRA",
+  "ROTH_IRA",
   "403B",
-  "ROTH",
   "HSA",
 ];
+
+/** 401k types that share the same employee deferral limit per person. */
+const TYPES_401K: AccountType[] = ["TRADITIONAL_401K", "ROTH_401K"];
+
+/** IRA types that share the same combined limit per person. */
+const TYPES_IRA: AccountType[] = ["TRADITIONAL_IRA", "ROTH_IRA"];
 
 function appliesInYear(c: Contribution, year: number): boolean {
   const start = c.startYear ?? -Infinity;
@@ -134,6 +147,54 @@ export function getContributionsByAccount(
     out[c.accountId] = (out[c.accountId] ?? 0) + amt;
   }
 
+  return out;
+}
+
+/** Map account owner to person id (PERSON_A = people[0], PERSON_B = people[1]). JOINT returns null. */
+function getPersonIdForOwner(household: Household, owner: string): string | null {
+  if (owner === "PERSON_A") return household.people[0]?.id ?? null;
+  if (owner === "PERSON_B") return household.people[1]?.id ?? null;
+  return null;
+}
+
+/** Total contributions by person and bucket (401k vs IRA) for shared-limit checks. */
+export function getContributionsByPersonAndBucket(
+  household: Household,
+  contributionsByAccount: Record<string, number>
+): Record<string, { "401k": number; "ira": number }> {
+  const people = household.people;
+  const out: Record<string, { "401k": number; "ira": number }> = {};
+  for (const p of people) out[p.id] = { "401k": 0, "ira": 0 };
+
+  for (const account of household.accounts) {
+    const personId = getPersonIdForOwner(household, account.owner);
+    if (!personId || !(personId in out)) continue;
+    const amt = contributionsByAccount[account.id] ?? 0;
+    if (TYPES_401K.includes(account.type)) out[personId]!["401k"] += amt;
+    else if (TYPES_IRA.includes(account.type)) out[personId]!["ira"] += amt;
+  }
+  return out;
+}
+
+/** Employee+employer breakdown by person and 401k bucket (for dual-limit display). */
+export function getContributionsBreakdownByPersonAndBucket(
+  household: Household,
+  breakdownByAccount: Record<string, { employee: number; employer: number }>
+): Record<string, { employee: number; employer: number }> {
+  const people = household.people;
+  const out: Record<string, { employee: number; employer: number }> = {};
+  for (const p of people) out[p.id] = { employee: 0, employer: 0 };
+
+  for (const account of household.accounts) {
+    if (!TYPES_401K.includes(account.type) && account.type !== "403B") continue;
+    const personId = getPersonIdForOwner(household, account.owner);
+    if (!personId || !(personId in out)) continue;
+    const b = breakdownByAccount[account.id];
+    if (b) {
+      out[personId]!.employee += b.employee;
+      out[personId]!.employer += b.employer;
+    }
+  }
   return out;
 }
 
@@ -210,19 +271,34 @@ export function getContributionLimitInfo(
   accountType: AccountType,
   contributed: number,
   year: number,
-  breakdown?: { employee: number; employer: number }
+  breakdown?: { employee: number; employer: number },
+  /** For 401k/IRA types: total contributed in that bucket for this person (shared limit). */
+  totalContributedInBucket?: number,
+  /** For 401k: total employee deferral in 401k bucket (Trad+Roth share limit). */
+  totalEmployeeIn401kBucket?: number
 ): ContributionLimitInfo | null {
   const limit = getContributionLimit(accountType, year);
   if (limit == null) return null;
 
-  const is401k = accountType === "TRADITIONAL" || accountType === "403B";
+  const is401k =
+    accountType === "TRADITIONAL_401K" ||
+    accountType === "ROTH_401K" ||
+    accountType === "403B";
+  const isIra = accountType === "TRADITIONAL_IRA" || accountType === "ROTH_IRA";
   const combinedLimit = is401k ? get401kCombinedLimit(accountType, year) : null;
 
-  if (is401k && breakdown && combinedLimit != null) {
-    const employeeContributed = breakdown.employee;
-    const employerContributed = breakdown.employer;
+  const effectiveContributed =
+    totalContributedInBucket != null && (is401k || isIra)
+      ? totalContributedInBucket
+      : contributed;
+
+  if (is401k && combinedLimit != null) {
+    const employeeContributed =
+      totalEmployeeIn401kBucket ?? breakdown?.employee ?? contributed;
+    const employerContributed = breakdown?.employer ?? 0;
+    const totalForCombined = totalContributedInBucket ?? contributed;
     const isOverEmployeeLimit = employeeContributed > limit;
-    const isOverCombinedLimit = contributed > combinedLimit;
+    const isOverCombinedLimit = totalForCombined > combinedLimit;
     return {
       accountId,
       accountType,
@@ -239,13 +315,14 @@ export function getContributionLimitInfo(
     };
   }
 
-  const percentOfLimit = limit > 0 ? (contributed / limit) * 100 : 0;
+  const percentOfLimit =
+    limit > 0 ? (effectiveContributed / limit) * 100 : 0;
   return {
     accountId,
     accountType,
     contributed,
     limit,
     percentOfLimit,
-    isOverLimit: contributed > limit,
+    isOverLimit: effectiveContributed > limit,
   };
 }

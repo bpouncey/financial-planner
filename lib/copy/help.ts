@@ -212,7 +212,8 @@ export const HELP_ACCOUNTS: Record<string, HelpEntry> = {
   },
   type: {
     title: "Account type",
-    description: "Cash = savings, checking. Taxable = brokerage. Money Market = liquid, taxable (e.g. money market funds). Traditional = 401k, IRA (pre-tax). 403(b) = tax-deferred (similar to Traditional). Roth = Roth IRA/401k (post-tax). HSA = health savings account.",
+    description:
+      "Cash = savings, checking. Taxable = brokerage. Money Market = liquid, taxable. Traditional 401k / Roth 401k = employer plans (401k limits). Traditional IRA / Roth IRA = individual plans (IRA limits). 403(b) = tax-deferred (similar to 401k). HSA = health savings account.",
   },
   owner: {
     title: "Owner",
@@ -230,6 +231,11 @@ export const HELP_ACCOUNTS: Record<string, HelpEntry> = {
     title: "APY (%)",
     description: "Annual Percentage Yield for this money market account. Growth uses this rate instead of the scenario investment return. Leave blank to use the scenario rate.",
     example: "4.5 = 4.5% APY.",
+  },
+  isEmployerSponsored: {
+    title: "Employer-sponsored",
+    description:
+      "Check if this is an employer-sponsored plan (401k, 403b, Roth 401k). IRAs are not employer-sponsored. Used to track progress for the FOO Employer Match step.",
   },
 };
 

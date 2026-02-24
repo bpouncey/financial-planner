@@ -4,6 +4,7 @@ import type { Person, Contribution } from "@/lib/types/zod";
 import { useHouseholdStore } from "@/stores/household";
 import { FormFieldWithHelp } from "@/components/ui/form-field-with-help";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { HELP_HOUSEHOLD, HELP_PEOPLE, formatHelpEntry } from "@/lib/copy/help";
 import { PayrollContributionsForm } from "./contributions-form";
 
@@ -136,10 +137,8 @@ function PersonForm({ label, person, onUpdate, setPayrollInvesting }: PersonForm
           label="Gross income (annual)"
           helpContent={formatHelpEntry(HELP_PEOPLE.baseSalaryAnnual)}
         >
-          <Input
+          <MoneyInput
             id={`${person.id}-income`}
-            type="text"
-            inputMode="numeric"
             value={salary}
             onChange={(e) => {
               const parsed = parseCurrency(e.target.value);
@@ -150,7 +149,6 @@ function PersonForm({ label, person, onUpdate, setPayrollInvesting }: PersonForm
                 },
               });
             }}
-            placeholder="$0"
           />
         </FormFieldWithHelp>
         <FormFieldWithHelp
@@ -210,10 +208,8 @@ function PersonForm({ label, person, onUpdate, setPayrollInvesting }: PersonForm
           label="Payroll deductions (annual)"
           helpContent={formatHelpEntry(HELP_PEOPLE.payrollDeductionsSpending)}
         >
-          <Input
+          <MoneyInput
             id={`${person.id}-deductions`}
-            type="text"
-            inputMode="numeric"
             value={deductions}
             onChange={(e) => {
               const parsed = parseCurrency(e.target.value);
@@ -224,7 +220,6 @@ function PersonForm({ label, person, onUpdate, setPayrollInvesting }: PersonForm
                 },
               });
             }}
-            placeholder="$0"
           />
         </FormFieldWithHelp>
       </div>

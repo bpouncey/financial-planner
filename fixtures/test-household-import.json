@@ -49,7 +49,7 @@
     {
       "id": "acc-vumc-403b",
       "name": "VUMC 403B",
-      "type": "TRADITIONAL",
+      "type": "403B",
       "owner": "PERSON_A",
       "startingBalance": 8153.04,
       "includedInFIAssets": true
@@ -57,7 +57,7 @@
     {
       "id": "acc-duke-vested",
       "name": "Duke (vested only)",
-      "type": "TRADITIONAL",
+      "type": "TRADITIONAL_401K",
       "owner": "PERSON_A",
       "startingBalance": 4856.75,
       "includedInFIAssets": true
@@ -65,7 +65,7 @@
     {
       "id": "acc-traditional-ira-ah",
       "name": "Traditional IRA (AH)",
-      "type": "TRADITIONAL",
+      "type": "TRADITIONAL_IRA",
       "owner": "PERSON_A",
       "startingBalance": 22199.89,
       "includedInFIAssets": true
@@ -73,7 +73,7 @@
     {
       "id": "acc-gsk-401k",
       "name": "GSK 401k Plan",
-      "type": "TRADITIONAL",
+      "type": "TRADITIONAL_401K",
       "owner": "PERSON_A",
       "startingBalance": 98000,
       "includedInFIAssets": true
@@ -81,7 +81,7 @@
     {
       "id": "acc-fidelity-reskill",
       "name": "Fidelity (Reskill)",
-      "type": "TRADITIONAL",
+      "type": "TRADITIONAL_401K",
       "owner": "PERSON_B",
       "startingBalance": 15173.88,
       "includedInFIAssets": true
@@ -89,7 +89,7 @@
     {
       "id": "acc-guideline-401k",
       "name": "Guideline (Patch - 401k)",
-      "type": "TRADITIONAL",
+      "type": "TRADITIONAL_401K",
       "owner": "PERSON_B",
       "startingBalance": 7704.4,
       "includedInFIAssets": true
@@ -97,7 +97,7 @@
     {
       "id": "acc-guideline-roth",
       "name": "Guideline (Patch - Roth)",
-      "type": "ROTH",
+      "type": "ROTH_401K",
       "owner": "PERSON_B",
       "startingBalance": 2203.29,
       "includedInFIAssets": true

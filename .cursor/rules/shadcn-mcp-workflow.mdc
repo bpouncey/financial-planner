@@ -9,8 +9,9 @@ When asked to work with **Shadcn UI** components (adding, modifying, or building
 
 ## 1. Automatic MCP Server Usage
 
-- **Always use the MCP server** for Shadcn-related work. Do not rely solely on training data.
-- Use the available MCP tools to fetch up-to-date documentation, component specs, and code examples for Shadcn UI.
+- **Always use the Shadcn MCP server** (the `shadcn` MCP) for Shadcn-related work. Do not rely solely on training data.
+- **Do not use Context7** or other generic doc tools for Shadcn components—use the Shadcn MCP tools (registry, demo, install) instead.
+- Use the Shadcn MCP tools to fetch component specs, demos, and code examples from the shadcn registry.
 
 ## 2. Planning Phase—Prioritize Existing Components and Blocks
 
@@ -24,7 +25,7 @@ During planning for anything Shadcn-related:
 
 When actually building or integrating Shadcn components:
 
-1. **Call the demo tool first** (or equivalent MCP tool that shows component usage).
+1. **Call the Shadcn MCP demo tool first** (from the shadcn MCP server, not Context7).
 2. Use the returned demo/example to understand:
    - Correct import paths and props
    - Recommended composition and patterns

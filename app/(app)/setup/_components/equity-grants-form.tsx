@@ -8,6 +8,7 @@ import { FormFieldWithHelp } from "@/components/ui/form-field-with-help";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { HELP_EQUITY, formatHelpContent } from "@/lib/copy/help";
 import { Input } from "@/components/ui/input";
+import { MoneyInput, SharesInput } from "@/components/ui/money-input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -360,16 +361,15 @@ export function EquityGrantsForm() {
                 label="Price per share ($)"
                 helpContent={formatHelpContent(HELP_EQUITY.fixedPrice)}
               >
-                <Input
+                <MoneyInput
                   id="grant-fixed-price"
-                  type="number"
-                  step="0.01"
-                  min="0"
                   value={formState.fixedPrice}
                   onChange={(e) =>
-                    setFormState((s) => ({ ...s, fixedPrice: e.target.value }))
+                    setFormState((s) => ({
+                      ...s,
+                      fixedPrice: e.target.value.replace(/,/g, ""),
+                    }))
                   }
-                  placeholder="0"
                   required={formState.priceMode === "FIXED"}
                 />
               </FormFieldWithHelp>
@@ -398,16 +398,15 @@ export function EquityGrantsForm() {
                 label="Starting price per share ($)"
                 helpContent={formatHelpContent(HELP_EQUITY.fixedPrice)}
               >
-                <Input
+                <MoneyInput
                   id="grant-fixed-price-growth"
-                  type="number"
-                  step="0.01"
-                  min="0"
                   value={formState.fixedPrice}
                   onChange={(e) =>
-                    setFormState((s) => ({ ...s, fixedPrice: e.target.value }))
+                    setFormState((s) => ({
+                      ...s,
+                      fixedPrice: e.target.value.replace(/,/g, ""),
+                    }))
                   }
-                  placeholder="0"
                 />
               </FormFieldWithHelp>
             )}
@@ -451,9 +450,22 @@ export function EquityGrantsForm() {
               </Button>
             </div>
             <div className="space-y-2">
+              {formState.vestingEntries.length > 0 && (
+                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 items-center">
+                  <Label className="text-muted-foreground text-sm">Year</Label>
+                  <Label className="text-muted-foreground text-sm">
+                    # of shares
+                  </Label>
+                  <div />
+                </div>
+              )}
               {formState.vestingEntries.map((entry, i) => (
-                <div key={i} className="flex items-center gap-2">
+                <div
+                  key={i}
+                  className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 items-center"
+                >
                   <Input
+                    id={`vest-year-${i}`}
                     type="number"
                     min={CURRENT_YEAR - 5}
                     max={CURRENT_YEAR + 30}
@@ -462,18 +474,16 @@ export function EquityGrantsForm() {
                       updateVestingRow(i, "year", e.target.value)
                     }
                     placeholder="Year"
-                    className="w-24"
+                    className="w-full"
                   />
-                  <Input
-                    type="number"
-                    step="1"
-                    min="0"
+                  <SharesInput
+                    id={`vest-shares-${i}`}
                     value={entry.shares}
                     onChange={(e) =>
                       updateVestingRow(i, "shares", e.target.value)
                     }
                     placeholder="Shares"
-                    className="w-28"
+                    className="w-full"
                   />
                   {formState.vestingEntries.length > 1 && (
                     <Button
@@ -530,7 +540,7 @@ export function EquityGrantsForm() {
                   <span className="text-sm text-content-muted">
                     {grant.startYear}
                     {grant.endYear != null ? `–${grant.endYear}` : ""} ·{" "}
-                    {totalShares} shares → {dest?.name ?? grant.destinationAccountId}
+                    {totalShares.toLocaleString()} shares → {dest?.name ?? grant.destinationAccountId}
                   </span>
                 </div>
                 <div className="flex gap-2">

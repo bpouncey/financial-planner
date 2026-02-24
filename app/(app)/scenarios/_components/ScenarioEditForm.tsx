@@ -19,6 +19,7 @@ import { FormFieldWithHelp } from "@/components/ui/form-field-with-help";
 import { HELP_FORM, HELP_EVENTS, formatHelpContent } from "@/lib/copy/help";
 import { ModelingModeGuide } from "./ModelingModeGuide";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -765,10 +766,8 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
                 label="Take-home (annual $)"
                 helpContent={formatHelpContent(HELP_FORM.takeHomeAnnual)}
               >
-                <Input
+                <MoneyInput
                   id="take-home"
-                  type="text"
-                  inputMode="numeric"
                   value={
                     scenario.takeHomeAnnual != null
                       ? String(scenario.takeHomeAnnual)
@@ -781,7 +780,6 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
                       effectiveTaxRate: null,
                     });
                   }}
-                  placeholder="$0"
                 />
               </FormFieldWithHelp>
             </div>

@@ -72,21 +72,20 @@ const FOO_STEPS: FooStep[] = [
     setupLabel: "Payroll investing & Employer match",
     getStatus: ({ household, scenario }) => {
       if (!scenario?.includeEmployerMatch) return "in-progress";
-      const hasRetirementAccount = household.accounts.some(
-        (a) => a.type === "TRADITIONAL" || a.type === "403B"
+      const employerSponsoredAccounts = household.accounts.filter(
+        (a) =>
+          (a.type === "TRADITIONAL_401K" || a.type === "403B") &&
+          (a.isEmployerSponsored !== false)
       );
-      if (!hasRetirementAccount) return "in-progress";
-      const hasPayrollToRetirement = household.people.some((p) =>
+      if (employerSponsoredAccounts.length === 0) return "in-progress";
+      const employerAccountIds = new Set(employerSponsoredAccounts.map((a) => a.id));
+      const hasPayrollToEmployerPlan = household.people.some((p) =>
         (p.payroll.payrollInvesting ?? []).some((c) => {
-          const acc = household.accounts.find((a) => a.id === c.accountId);
-          return (
-            acc &&
-            (acc.type === "TRADITIONAL" || acc.type === "403B") &&
-            (c.amountAnnual ?? c.amountMonthly ?? c.percentOfIncome ?? 0) > 0
-          );
+          if (!employerAccountIds.has(c.accountId)) return false;
+          return (c.amountAnnual ?? c.amountMonthly ?? c.percentOfIncome ?? 0) > 0;
         })
       );
-      return hasPayrollToRetirement ? "complete" : "in-progress";
+      return hasPayrollToEmployerPlan ? "complete" : "in-progress";
     },
   },
   {
@@ -126,7 +125,7 @@ const FOO_STEPS: FooStep[] = [
     setupLabel: "Accounts & Contributions",
     getStatus: ({ household }) => {
       const rothOrHsa = household.accounts.filter(
-        (a) => a.type === "ROTH" || a.type === "HSA"
+        (a) => a.type === "ROTH_401K" || a.type === "ROTH_IRA" || a.type === "HSA"
       );
       if (rothOrHsa.length === 0) return "in-progress";
       const hasContribs = rothOrHsa.some((a) =>
@@ -144,7 +143,7 @@ const FOO_STEPS: FooStep[] = [
     setupLabel: "Payroll investing",
     getStatus: ({ household }) => {
       const tradOr403b = household.accounts.filter(
-        (a) => a.type === "TRADITIONAL" || a.type === "403B"
+        (a) => a.type === "TRADITIONAL_401K" || a.type === "403B"
       );
       if (tradOr403b.length === 0) return "in-progress";
       const hasContribs = tradOr403b.some((a) =>

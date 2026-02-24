@@ -3,7 +3,12 @@
 import { useHouseholdStore } from "@/stores/household";
 import { FormFieldWithHelp } from "@/components/ui/form-field-with-help";
 import { formatHelpContent, HELP_EMERGENCY_FUND } from "@/lib/copy/help";
-import { Input } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from "@/components/ui/input-group";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -65,21 +70,26 @@ export function EmergencyFundGoalForm() {
           <div className="min-w-[140px]">
             <FormFieldWithHelp
               id="emergency-fund-target"
-              label="Target ($)"
+              label="Target"
               helpContent={formatHelpContent(HELP_EMERGENCY_FUND.targetAmount)}
             >
-              <Input
-                id="emergency-fund-target"
-                type="number"
-                step="100"
-                min="0"
-                value={targetAmount === 0 ? "" : targetAmount}
-                onChange={(e) => {
-                  const v = parseFloat(e.target.value);
-                  handleTargetChange(Number.isNaN(v) ? 0 : v);
-                }}
-                placeholder="e.g. 15000"
-              />
+              <InputGroup>
+                <InputGroupAddon>
+                  <InputGroupText>$</InputGroupText>
+                </InputGroupAddon>
+                <InputGroupInput
+                  id="emergency-fund-target"
+                  type="number"
+                  step="100"
+                  min="0"
+                  value={targetAmount === 0 ? "" : targetAmount}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    handleTargetChange(Number.isNaN(v) ? 0 : v);
+                  }}
+                  placeholder="e.g. 15000"
+                />
+              </InputGroup>
             </FormFieldWithHelp>
           </div>
           <div className="min-w-[180px] flex-1">

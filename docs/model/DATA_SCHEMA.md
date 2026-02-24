@@ -61,11 +61,12 @@ This file defines the shape of objects stored in local persistence (v1: localSto
 ## Account
 - `id`
 - `name`
-- `type` (enum): CASH | TAXABLE | MONEY_MARKET | TRADITIONAL | 403B | ROTH | HSA | EQUITY
+- `type` (enum): CASH | TAXABLE | MONEY_MARKET | TRADITIONAL_401K | ROTH_401K | TRADITIONAL_IRA | ROTH_IRA | 403B | HSA | EQUITY
 - `owner` (enum): PERSON_A | PERSON_B | JOINT
 - `startingBalance` (number)
 - `includedInFIAssets` (boolean, default true except maybe CASH)
 - `apy` (number, optional): For MONEY_MARKET only. Annual Percentage Yield as decimal (e.g. 0.045 for 4.5%). When set, growth uses this rate instead of scenario return.
+- `isEmployerSponsored` (boolean, optional): Whether this is an employer-sponsored plan (401k, 403b, Roth 401k). Used for FOO Employer Match step. IRAs are not employer-sponsored.
 - `accessibility` (AccessibilityModel)
 
 ### AccessibilityModel (optional v1)

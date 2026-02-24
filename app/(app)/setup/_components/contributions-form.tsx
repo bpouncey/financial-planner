@@ -4,6 +4,7 @@ import { useHouseholdStore } from "@/stores/household";
 import type { Contribution, ContributorType } from "@/lib/types/zod";
 import { FormFieldWithHelp } from "@/components/ui/form-field-with-help";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -12,10 +13,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import { HELP_CONTRIBUTIONS } from "@/lib/copy/help";
 
 function formatHelp(entry: { description: string; example?: string }): string {
   return entry.example ? `${entry.description} Example: ${entry.example}.` : entry.description;
+}
+
+function parseCurrency(value: string): number {
+  const cleaned = value.replace(/[^0-9.-]/g, "");
+  const parsed = parseFloat(cleaned);
+  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 interface ContributionRowProps {
@@ -49,28 +58,24 @@ function ContributionRow({
   const percentId = `contrib-${rowIndex}-percent`;
 
   const fixedAmountField = (
-    <div className="w-28">
+    <div className="min-w-[140px]">
       <FormFieldWithHelp
         id={amountId}
         label="$/mo"
         helpContent={formatHelp(HELP_CONTRIBUTIONS.amountMonthly)}
       >
-        <Input
+        <MoneyInput
           id={amountId}
-          type="number"
-          step="1"
-          min="0"
-          value={amountMonthly === 0 ? "" : amountMonthly}
+          value={amountMonthly === 0 ? "" : String(amountMonthly)}
           onChange={(e) => {
-            const v = parseFloat(e.target.value);
+            const v = parseCurrency(e.target.value);
             onUpdate({
               ...contribution,
-              amountMonthly: Number.isNaN(v) ? undefined : v,
+              amountMonthly: v,
               amountAnnual: undefined,
               percentOfIncome: undefined,
             });
           }}
-          placeholder="0"
         />
       </FormFieldWithHelp>
     </div>
@@ -158,46 +163,46 @@ function ContributionRow({
       )}
       {allowPercent ? (
         <>
-          <div className="flex gap-3">
-            <label className="flex cursor-pointer items-center gap-2">
-              <input
-                type="radio"
-                name={`contrib-mode-${rowIndex}`}
-                checked={!isPercentMode}
-                onChange={() =>
-                  onUpdate({
-                    ...contribution,
-                    percentOfIncome: undefined,
-                    amountMonthly: amountMonthly || 0,
-                    amountAnnual: undefined,
-                  })
-                }
-                className="h-4 w-4 border-border bg-surface text-content focus:ring-accent"
-              />
-              <span className="text-sm text-content-muted">
+          <RadioGroup
+            value={isPercentMode ? "percent" : "fixed"}
+            onValueChange={(value) =>
+              onUpdate(
+                value === "percent"
+                  ? {
+                      ...contribution,
+                      amountMonthly: undefined,
+                      amountAnnual: undefined,
+                      percentOfIncome: percentValue || 0,
+                    }
+                  : {
+                      ...contribution,
+                      percentOfIncome: undefined,
+                      amountMonthly: amountMonthly || 0,
+                      amountAnnual: undefined,
+                    }
+              )
+            }
+            className="flex gap-3"
+          >
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="fixed" id={`contrib-mode-${rowIndex}-fixed`} />
+              <Label
+                htmlFor={`contrib-mode-${rowIndex}-fixed`}
+                className="cursor-pointer font-normal text-content-muted"
+              >
                 $/mo
-              </span>
-            </label>
-            <label className="flex cursor-pointer items-center gap-2">
-              <input
-                type="radio"
-                name={`contrib-mode-${rowIndex}`}
-                checked={isPercentMode}
-                onChange={() =>
-                  onUpdate({
-                    ...contribution,
-                    amountMonthly: undefined,
-                    amountAnnual: undefined,
-                    percentOfIncome: percentValue || 0,
-                  })
-                }
-                className="h-4 w-4 border-border bg-surface text-content focus:ring-accent"
-              />
-              <span className="text-sm text-content-muted">
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="percent" id={`contrib-mode-${rowIndex}-percent`} />
+              <Label
+                htmlFor={`contrib-mode-${rowIndex}-percent`}
+                className="cursor-pointer font-normal text-content-muted"
+              >
                 % of income
-              </span>
-            </label>
-          </div>
+              </Label>
+            </div>
+          </RadioGroup>
           {isPercentMode ? percentField : fixedAmountField}
         </>
       ) : (

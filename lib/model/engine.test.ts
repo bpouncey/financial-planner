@@ -58,7 +58,7 @@ function createBaseHousehold(overrides?: {
         {
           id: "inv",
           name: "Invested",
-          type: "TRADITIONAL",
+          type: "TRADITIONAL_401K",
           owner: "PERSON_A",
           startingBalance: startInvested,
           includedInFIAssets: true,
@@ -83,7 +83,7 @@ function createBaseScenario(overrides?: Partial<Scenario>): Scenario {
     retirementAgeTarget: 65,
     salaryGrowthOverride: null,
     includeEmployerMatch: false,
-    withdrawalOrder: ["TAXABLE", "TRADITIONAL", "ROTH"],
+    withdrawalOrder: ["TAXABLE", "TRADITIONAL_401K", "ROTH_IRA"],
     ...overrides,
   };
 }
@@ -202,7 +202,7 @@ describe("Engine", () => {
           {
             id: invId,
             name: "Invested",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 159_291,
             includedInFIAssets: true,
@@ -223,7 +223,7 @@ describe("Engine", () => {
           {
             id: invId,
             name: "Invested",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 159_291,
             includedInFIAssets: true,
@@ -269,7 +269,7 @@ describe("Engine", () => {
           {
             id: invId,
             name: "Invested",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 159_291,
             includedInFIAssets: true,
@@ -290,7 +290,7 @@ describe("Engine", () => {
           {
             id: invId,
             name: "Invested",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 159_291,
             includedInFIAssets: true,
@@ -431,7 +431,7 @@ describe("Engine", () => {
           {
             id: "inv",
             name: "401k",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 100_000,
             includedInFIAssets: true,
@@ -588,7 +588,7 @@ describe("Engine", () => {
           {
             id: tradId,
             name: "401k",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: fiNumber + 100_000,
             includedInFIAssets: true,
@@ -644,7 +644,7 @@ describe("Engine", () => {
           {
             id: tradId,
             name: "401k",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 3_500_000,
             includedInFIAssets: true,
@@ -652,7 +652,7 @@ describe("Engine", () => {
           {
             id: rothId,
             name: "Roth",
-            type: "ROTH",
+            type: "ROTH_IRA",
             owner: "PERSON_A",
             startingBalance: 500_000,
             includedInFIAssets: true,
@@ -700,7 +700,7 @@ describe("Engine", () => {
           {
             id: tradId,
             name: "401k",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 3_500_000,
             includedInFIAssets: true,
@@ -771,7 +771,7 @@ describe("Engine", () => {
           {
             id: tradId,
             name: "401k",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 3_500_000,
             includedInFIAssets: true,
@@ -848,7 +848,7 @@ describe("Engine", () => {
           {
             id: tradId,
             name: "401k",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 3_500_000,
             includedInFIAssets: true,
@@ -899,7 +899,7 @@ describe("Engine", () => {
           {
             id: tradId,
             name: "401k",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 1_000_000,
             includedInFIAssets: true,
@@ -940,7 +940,7 @@ describe("Engine", () => {
           {
             id: tradId,
             name: "401k",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 3_500_000,
             includedInFIAssets: true,
@@ -999,7 +999,7 @@ describe("Engine", () => {
         swr: 0.03,
         retirementStartYear: START_YEAR,
         retirementEffectiveTaxRate: 0.2,
-        withdrawalOrder: ["TAXABLE", "TRADITIONAL", "403B", "ROTH"],
+        withdrawalOrder: ["TAXABLE", "TRADITIONAL_401K", "403B", "ROTH_IRA"],
         takeHomeAnnual: 0,
         currentMonthlySpend: 0,
       });
@@ -1036,7 +1036,7 @@ describe("Engine", () => {
           {
             id: tradId,
             name: "401k",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 5_000_000,
             includedInFIAssets: true,
@@ -1044,7 +1044,7 @@ describe("Engine", () => {
           {
             id: rothId,
             name: "Roth",
-            type: "ROTH",
+            type: "ROTH_IRA",
             owner: "PERSON_A",
             startingBalance: 500_000,
             includedInFIAssets: true,
@@ -1083,7 +1083,7 @@ describe("Engine", () => {
           {
             id: tradId,
             name: "401k",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 5_000_000,
             includedInFIAssets: true,
@@ -1120,7 +1120,7 @@ describe("Engine", () => {
           {
             id: tradId,
             name: "401k",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 5_000_000,
             includedInFIAssets: true,
@@ -1158,7 +1158,7 @@ describe("Engine", () => {
           {
             id: tradId,
             name: "401k",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 5_000_000,
             includedInFIAssets: true,
@@ -1214,7 +1214,7 @@ describe("Engine", () => {
         retirementMonthlySpend: 5000,
         swr: 0.03,
         retirementStartYear: START_YEAR,
-        withdrawalOrder: ["TAXABLE", "TRADITIONAL", "403B", "ROTH", "HSA"],
+        withdrawalOrder: ["TAXABLE", "TRADITIONAL_401K", "403B", "ROTH_IRA", "HSA"],
         takeHomeAnnual: 0,
         currentMonthlySpend: 0,
       });
@@ -1262,7 +1262,7 @@ describe("Engine", () => {
         retirementMonthlySpend: 5000,
         swr: 0.03,
         retirementStartYear: START_YEAR,
-        withdrawalOrder: ["TAXABLE", "TRADITIONAL", "403B", "ROTH", "HSA"],
+        withdrawalOrder: ["TAXABLE", "TRADITIONAL_401K", "403B", "ROTH_IRA", "HSA"],
         takeHomeAnnual: 0,
         currentMonthlySpend: 0,
       });
@@ -1284,7 +1284,7 @@ describe("Engine", () => {
           {
             id: "inv",
             name: "401k",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 100_000,
             includedInFIAssets: true,
@@ -1695,7 +1695,7 @@ describe("Engine", () => {
           {
             id: traditionalId,
             name: "401k",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 100000,
             includedInFIAssets: true,
@@ -1764,7 +1764,7 @@ describe("Engine", () => {
           {
             id: traditionalId,
             name: "401k",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 100000,
             includedInFIAssets: true,
@@ -1789,7 +1789,7 @@ describe("Engine", () => {
           {
             id: traditionalId,
             name: "401k",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 100000,
             includedInFIAssets: true,
@@ -1833,7 +1833,7 @@ describe("Engine", () => {
           {
             id: "inv",
             name: "Invested",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 100_000,
             includedInFIAssets: true,
@@ -2494,7 +2494,7 @@ describe("Engine", () => {
           {
             id: tradId,
             name: "Person A 401k",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "PERSON_A",
             startingBalance: 50_000,
             includedInFIAssets: true,
@@ -2548,7 +2548,7 @@ describe("Engine", () => {
           {
             id: joint401k,
             name: "Joint 401k",
-            type: "TRADITIONAL",
+            type: "TRADITIONAL_401K",
             owner: "JOINT",
             startingBalance: 100_000,
             includedInFIAssets: true,

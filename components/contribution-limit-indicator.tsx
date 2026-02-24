@@ -9,6 +9,10 @@ interface ContributionLimitIndicatorProps {
   year: number;
   /** Employee vs employer breakdown for 401k/403b dual-limit display. */
   breakdown?: { employee: number; employer: number };
+  /** For 401k/IRA: total in that bucket for this person (shared limit). */
+  totalContributedInBucket?: number;
+  /** For 401k: total employee deferral in 401k bucket. */
+  totalEmployeeIn401kBucket?: number;
   /** Compact: show only bar + percentage. Full: show $X of $Y. */
   variant?: "compact" | "full";
   className?: string;
@@ -28,21 +32,33 @@ export function ContributionLimitIndicator({
   contributed,
   year,
   breakdown,
+  totalContributedInBucket,
+  totalEmployeeIn401kBucket,
   variant = "full",
   className = "",
 }: ContributionLimitIndicatorProps) {
   const info = getContributionLimitInfo(
     accountId,
-    accountType as "TRADITIONAL" | "403B" | "ROTH" | "HSA",
+    accountType as
+      | "TRADITIONAL_401K"
+      | "ROTH_401K"
+      | "TRADITIONAL_IRA"
+      | "ROTH_IRA"
+      | "403B"
+      | "HSA",
     contributed,
     year,
-    breakdown
+    breakdown,
+    totalContributedInBucket,
+    totalEmployeeIn401kBucket
   );
 
   if (!info) return null;
 
   const has401kDualLimits =
-    (accountType === "TRADITIONAL" || accountType === "403B") &&
+    (accountType === "TRADITIONAL_401K" ||
+      accountType === "ROTH_401K" ||
+      accountType === "403B") &&
     info.employeeLimit != null &&
     info.combinedLimit != null &&
     info.employerContributed != null;
@@ -56,12 +72,16 @@ export function ContributionLimitIndicator({
       (info.combinedLimit ?? 0) > 0
         ? (contributed / (info.combinedLimit ?? 1)) * 100
         : 0;
+    const hasEmployerContributions = (info.employerContributed ?? 0) > 0;
+    const hasEmployeeContributions = (info.employeeContributed ?? 0) > 0;
+    const showOnlyEmployee = !hasEmployerContributions && !hasEmployeeContributions;
     return (
       <div className={`flex flex-col gap-2 ${className}`}>
+        {!hasEmployerContributions && (
         <div className="flex flex-col gap-0.5">
           <span className="text-xs text-content-muted">Employee</span>
           <div className="flex items-center gap-2">
-            <div className="h-1.5 min-w-[48px] flex-1 overflow-hidden rounded-full bg-surface-elevated">
+            <div className="h-1.5 min-w-[48px] flex-1 overflow-hidden rounded-full bg-white">
               <div
                 className={`h-full rounded-full transition-all ${
                   info.isOverEmployeeLimit
@@ -78,10 +98,12 @@ export function ContributionLimitIndicator({
             </span>
           </div>
         </div>
+        )}
+        {!showOnlyEmployee && (
         <div className="flex flex-col gap-0.5">
           <span className="text-xs text-content-muted">Combined (employee + employer)</span>
           <div className="flex items-center gap-2">
-            <div className="h-1.5 min-w-[48px] flex-1 overflow-hidden rounded-full bg-surface-elevated">
+            <div className="h-1.5 min-w-[48px] flex-1 overflow-hidden rounded-full bg-white">
               <div
                 className={`h-full rounded-full transition-all ${
                   info.isOverCombinedLimit
@@ -98,6 +120,7 @@ export function ContributionLimitIndicator({
             </span>
           </div>
         </div>
+        )}
       </div>
     );
   }
@@ -108,7 +131,7 @@ export function ContributionLimitIndicator({
       title={`${formatCurrency(info.contributed)} of ${formatCurrency(info.limit)} annual limit (${year})`}
     >
       <div className="flex items-center gap-2">
-        <div className="h-1.5 min-w-[48px] flex-1 overflow-hidden rounded-full bg-surface-elevated">
+        <div className="h-1.5 min-w-[48px] flex-1 overflow-hidden rounded-full bg-white">
           <div
             className={`h-full rounded-full transition-all ${
               info.isOverLimit
