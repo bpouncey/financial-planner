@@ -7,14 +7,20 @@ import { EventSchema } from "@/lib/types/zod";
 import { FormFieldWithHelp } from "@/components/ui/form-field-with-help";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { HELP_EVENTS, formatHelpContent } from "@/lib/copy/help";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const EVENT_KINDS: { value: EventKind; label: string }[] = [
   { value: "INFLOW", label: "Inflow (windfall, bonus)" },
   { value: "OUTFLOW", label: "Outflow (purchase, down payment)" },
 ];
-
-const inputBase =
-  "w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-content placeholder:text-content-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
 
 interface EventFormState {
   id: string;
@@ -133,13 +139,9 @@ export function EventsForm() {
             side="top"
           />
           {!editingId && !formState.id && accounts.length > 0 && (
-            <button
-              type="button"
-              onClick={handleStartAdd}
-              className="rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background hover:bg-foreground/90"
-            >
+            <Button type="button" size="sm" onClick={handleStartAdd}>
               Add event
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -156,7 +158,7 @@ export function EventsForm() {
               helpContent={formatHelpContent(HELP_EVENTS.name)}
             >
               <>
-                <input
+                <Input
                   id="event-name"
                   type="text"
                   value={formState.name}
@@ -164,7 +166,7 @@ export function EventsForm() {
                     setFormState((s) => ({ ...s, name: e.target.value }))
                   }
                   placeholder="e.g. House down payment"
-                  className={`${inputBase} ${nameError ? "border-red-500 dark:border-red-500" : ""}`}
+                  aria-invalid={!!nameError}
                 />
                 {nameError && (
                   <p className="mt-1 text-sm text-red-600 dark:text-red-400">
@@ -178,30 +180,33 @@ export function EventsForm() {
               label="Type"
               helpContent={formatHelpContent(HELP_EVENTS.kind)}
             >
-              <select
-                id="event-kind"
+              <Select
                 value={formState.kind}
-                onChange={(e) =>
+                onValueChange={(value) =>
                   setFormState((s) => ({
                     ...s,
-                    kind: e.target.value as EventKind,
+                    kind: value as EventKind,
                   }))
                 }
-                className={inputBase}
               >
-                {EVENT_KINDS.map(({ value, label }) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="event-kind" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {EVENT_KINDS.map(({ value, label }) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </FormFieldWithHelp>
             <FormFieldWithHelp
               id="event-year"
               label="Year"
               helpContent={formatHelpContent(HELP_EVENTS.year)}
             >
-              <input
+              <Input
                 id="event-year"
                 type="number"
                 min={CURRENT_YEAR - 5}
@@ -210,7 +215,6 @@ export function EventsForm() {
                 onChange={(e) =>
                   setFormState((s) => ({ ...s, year: e.target.value }))
                 }
-                className={inputBase}
               />
             </FormFieldWithHelp>
             <FormFieldWithHelp
@@ -218,7 +222,7 @@ export function EventsForm() {
               label="Amount ($)"
               helpContent={formatHelpContent(HELP_EVENTS.amount)}
             >
-              <input
+              <Input
                 id="event-amount"
                 type="number"
                 step="0.01"
@@ -227,7 +231,6 @@ export function EventsForm() {
                   setFormState((s) => ({ ...s, amount: e.target.value }))
                 }
                 placeholder="0"
-                className={inputBase}
               />
             </FormFieldWithHelp>
             <FormFieldWithHelp
@@ -239,38 +242,38 @@ export function EventsForm() {
               }
               helpContent={formatHelpContent(HELP_EVENTS.account)}
             >
-              <select
-                id="event-account"
+              <Select
                 value={formState.accountId}
-                onChange={(e) =>
-                  setFormState((s) => ({ ...s, accountId: e.target.value }))
+                onValueChange={(value) =>
+                  setFormState((s) => ({ ...s, accountId: value }))
                 }
-                className={inputBase}
                 required
               >
-                <option value="">Select account</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} ({a.type})
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="event-account" className="w-full">
+                  <SelectValue placeholder="Select account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name} ({a.type})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </FormFieldWithHelp>
           </div>
           <div className="mt-4 flex gap-2">
-            <button
-              type="submit"
-              className="rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background hover:bg-foreground/90"
-            >
+            <Button type="submit" size="sm">
               {editingId ? "Save" : "Add"}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={handleCancel}
-              className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-content hover:bg-surface-elevated"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </form>
       )}
@@ -294,20 +297,23 @@ export function EventsForm() {
                 </span>
               </div>
               <div className="flex gap-2">
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="xs"
                   onClick={() => handleStartEdit(event)}
-                  className="rounded-md px-2 py-1 text-sm text-content-muted hover:bg-surface-elevated hover:text-content"
                 >
                   Edit
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="xs"
+                  className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/30 dark:hover:text-red-300"
                   onClick={() => handleDelete(event.id)}
-                  className="rounded-md px-2 py-1 text-sm text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/30 dark:hover:text-red-300"
                 >
                   Delete
-                </button>
+                </Button>
               </div>
             </li>
           ))}

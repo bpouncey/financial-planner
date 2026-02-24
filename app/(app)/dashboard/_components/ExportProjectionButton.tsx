@@ -3,6 +3,7 @@
 import { useHouseholdStore } from "@/stores/household";
 import { usePlanView } from "@/app/(app)/_components/PlanViewContext";
 import { downloadProjectionCsv } from "@/lib/utils/export-projection";
+import { Button } from "@/components/ui/button";
 
 export function ExportProjectionButton() {
   const { projection, planProjection, household, activeScenarioId } =
@@ -29,11 +30,11 @@ export function ExportProjectionButton() {
   }
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="outline"
+      size="sm"
       onClick={handleExport}
       disabled={disabled}
-      className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm font-medium text-content hover:bg-surface-elevated disabled:cursor-not-allowed disabled:opacity-50"
       title={disabled ? "Complete setup to export" : "Download projection as CSV"}
     >
       <svg
@@ -53,6 +54,6 @@ export function ExportProjectionButton() {
         <line x1="12" x2="12" y1="15" y2="3" />
       </svg>
       Export
-    </button>
+    </Button>
   );
 }

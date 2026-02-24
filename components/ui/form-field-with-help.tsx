@@ -1,9 +1,7 @@
 "use client";
 
+import { Label } from "@/components/ui/label";
 import { HelpTooltip } from "./help-tooltip";
-
-const labelBase =
-  "block text-sm font-medium text-content-muted";
 
 interface FormFieldWithHelpProps {
   id: string;
@@ -21,9 +19,9 @@ export function FormFieldWithHelp({
   return (
     <div className="space-y-1">
       <div className="mb-1 flex items-center gap-1.5">
-        <label htmlFor={id} className={labelBase}>
+        <Label htmlFor={id} className="text-muted-foreground">
           {label}
-        </label>
+        </Label>
         <HelpTooltip content={helpContent} side="top" />
       </div>
       {children}

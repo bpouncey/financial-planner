@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { SCENARIO_GUIDE } from "@/lib/copy/scenario-guide";
+import { Button } from "@/components/ui/button";
 
 /** Simple inline bold: **text** → <strong>text</strong> */
 function formatInlineBold(text: string): React.ReactNode[] {
@@ -80,13 +81,13 @@ export function ModelingModeGuide() {
 
   return (
     <>
-      <button
-        type="button"
+      <Button
+        variant="outline"
+        size="sm"
         onClick={() => setOpen(true)}
-        className="rounded-md border border-border bg-surface-elevated px-3 py-1.5 text-sm font-medium text-content shadow-sm hover:bg-surface focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1"
       >
         Real vs Nominal guide
-      </button>
+      </Button>
 
       {open && (
         <div
@@ -109,16 +110,16 @@ export function ModelingModeGuide() {
               >
                 {SCENARIO_GUIDE.toggleLabel}
               </h2>
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="icon-xs"
                 onClick={close}
-                className="rounded p-1 text-content-muted hover:bg-surface-elevated hover:text-content focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 aria-label="Close"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
                   <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
                 </svg>
-              </button>
+              </Button>
             </div>
             <div className="overflow-y-auto p-4" style={{ maxHeight: "calc(85vh - 52px)" }}>
               <GuideContent />

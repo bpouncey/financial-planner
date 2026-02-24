@@ -3,13 +3,11 @@
 import type { Person, Contribution } from "@/lib/types/zod";
 import { useHouseholdStore } from "@/stores/household";
 import { FormFieldWithHelp } from "@/components/ui/form-field-with-help";
+import { Input } from "@/components/ui/input";
 import { HELP_HOUSEHOLD, HELP_PEOPLE, formatHelpEntry } from "@/lib/copy/help";
 import { PayrollContributionsForm } from "./contributions-form";
 
 const CURRENT_YEAR = new Date().getFullYear();
-
-const inputBase =
-  "w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-content shadow-sm placeholder:text-content-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
 
 function parseCurrency(value: string): number {
   const cleaned = value.replace(/[^0-9.-]/g, "");
@@ -35,14 +33,13 @@ export function HouseholdSetupForm() {
             label="Household name"
             helpContent={formatHelpEntry(HELP_HOUSEHOLD.name)}
           >
-            <input
+            <Input
               id="household-name"
               type="text"
               value={household.name}
               onChange={(e) =>
                 updateHousehold({ name: e.target.value.trim() || "My Household" })
               }
-              className={inputBase}
               placeholder="My Household"
             />
           </FormFieldWithHelp>
@@ -51,7 +48,7 @@ export function HouseholdSetupForm() {
             label="Start year"
             helpContent={formatHelpEntry(HELP_HOUSEHOLD.startYear)}
           >
-            <input
+            <Input
               id="start-year"
               type="number"
               min={CURRENT_YEAR - 10}
@@ -62,7 +59,6 @@ export function HouseholdSetupForm() {
                 if (!Number.isNaN(v))
                   updateHousehold({ startYear: v });
               }}
-              className={inputBase}
             />
           </FormFieldWithHelp>
         </div>
@@ -124,14 +120,13 @@ function PersonForm({ label, person, onUpdate, setPayrollInvesting }: PersonForm
             label="Name"
             helpContent={formatHelpEntry(HELP_PEOPLE.name)}
           >
-            <input
+            <Input
               id={`${person.id}-name`}
               type="text"
               value={person.name}
               onChange={(e) =>
                 onUpdate({ name: e.target.value.trim() || label })
               }
-              className={inputBase}
               placeholder={label}
             />
           </FormFieldWithHelp>
@@ -141,7 +136,7 @@ function PersonForm({ label, person, onUpdate, setPayrollInvesting }: PersonForm
           label="Gross income (annual)"
           helpContent={formatHelpEntry(HELP_PEOPLE.baseSalaryAnnual)}
         >
-          <input
+          <Input
             id={`${person.id}-income`}
             type="text"
             inputMode="numeric"
@@ -156,7 +151,6 @@ function PersonForm({ label, person, onUpdate, setPayrollInvesting }: PersonForm
               });
             }}
             placeholder="$0"
-            className={inputBase}
           />
         </FormFieldWithHelp>
         <FormFieldWithHelp
@@ -164,7 +158,7 @@ function PersonForm({ label, person, onUpdate, setPayrollInvesting }: PersonForm
           label="Salary growth (%)"
           helpContent={formatHelpEntry(HELP_PEOPLE.salaryGrowthRate)}
         >
-          <input
+          <Input
             id={`${person.id}-salary-growth`}
             type="number"
             min={0}
@@ -186,7 +180,6 @@ function PersonForm({ label, person, onUpdate, setPayrollInvesting }: PersonForm
               });
             }}
             placeholder="0"
-            className={inputBase}
           />
         </FormFieldWithHelp>
         <FormFieldWithHelp
@@ -194,7 +187,7 @@ function PersonForm({ label, person, onUpdate, setPayrollInvesting }: PersonForm
           label="Birth year"
           helpContent={formatHelpEntry(HELP_PEOPLE.birthYear)}
         >
-          <input
+          <Input
             id={`${person.id}-birth-year`}
             type="number"
             min={1900}
@@ -210,7 +203,6 @@ function PersonForm({ label, person, onUpdate, setPayrollInvesting }: PersonForm
               if (!Number.isNaN(year)) onUpdate({ birthYear: year });
             }}
             placeholder="Optional"
-            className={inputBase}
           />
         </FormFieldWithHelp>
         <FormFieldWithHelp
@@ -218,7 +210,7 @@ function PersonForm({ label, person, onUpdate, setPayrollInvesting }: PersonForm
           label="Payroll deductions (annual)"
           helpContent={formatHelpEntry(HELP_PEOPLE.payrollDeductionsSpending)}
         >
-          <input
+          <Input
             id={`${person.id}-deductions`}
             type="text"
             inputMode="numeric"
@@ -233,7 +225,6 @@ function PersonForm({ label, person, onUpdate, setPayrollInvesting }: PersonForm
               });
             }}
             placeholder="$0"
-            className={inputBase}
           />
         </FormFieldWithHelp>
       </div>

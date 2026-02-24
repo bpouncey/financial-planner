@@ -1,12 +1,18 @@
 "use client";
 
 import { useHouseholdStore } from "@/stores/household";
-import type { Contribution } from "@/lib/types/zod";
+import type { Contribution, ContributorType } from "@/lib/types/zod";
 import { FormFieldWithHelp } from "@/components/ui/form-field-with-help";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { HELP_CONTRIBUTIONS } from "@/lib/copy/help";
-
-const inputBase =
-  "w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-content placeholder:text-content-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
 
 function formatHelp(entry: { description: string; example?: string }): string {
   return entry.example ? `${entry.description} Example: ${entry.example}.` : entry.description;
@@ -20,6 +26,8 @@ interface ContributionRowProps {
   rowIndex: number;
   /** When true, show Fixed ($/mo) vs % of income toggle. Payroll only. */
   allowPercent?: boolean;
+  /** When true, show Employee vs Employer selector (401k/403b limits differ). Payroll only. */
+  allowContributorType?: boolean;
 }
 
 function ContributionRow({
@@ -29,8 +37,10 @@ function ContributionRow({
   onRemove,
   rowIndex,
   allowPercent = false,
+  allowContributorType = false,
 }: ContributionRowProps) {
   const isPercentMode = allowPercent && contribution.percentOfIncome != null;
+  const contributorType: ContributorType = contribution.contributorType ?? "employee";
   const amountMonthly =
     contribution.amountMonthly ?? (contribution.amountAnnual ?? 0) / 12;
   const percentValue = contribution.percentOfIncome ?? 0;
@@ -45,7 +55,7 @@ function ContributionRow({
         label="$/mo"
         helpContent={formatHelp(HELP_CONTRIBUTIONS.amountMonthly)}
       >
-        <input
+        <Input
           id={amountId}
           type="number"
           step="1"
@@ -61,7 +71,6 @@ function ContributionRow({
             });
           }}
           placeholder="0"
-          className={inputBase}
         />
       </FormFieldWithHelp>
     </div>
@@ -74,7 +83,7 @@ function ContributionRow({
         label="%"
         helpContent={formatHelp(HELP_CONTRIBUTIONS.percentOfIncome)}
       >
-        <input
+        <Input
           id={percentId}
           type="number"
           step="0.5"
@@ -91,7 +100,6 @@ function ContributionRow({
             });
           }}
           placeholder="0"
-          className={inputBase}
         />
       </FormFieldWithHelp>
     </div>
@@ -105,22 +113,49 @@ function ContributionRow({
           label="Account"
           helpContent={formatHelp(HELP_CONTRIBUTIONS.account)}
         >
-          <select
-            id={accountId}
-            value={contribution.accountId}
-            onChange={(e) => onUpdate({ ...contribution, accountId: e.target.value })}
-            className={inputBase}
-            required
+          <Select
+            value={contribution.accountId || undefined}
+            onValueChange={(value) =>
+              onUpdate({ ...contribution, accountId: value })
+            }
           >
-            <option value="">Select account</option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger id={accountId} className="w-full">
+              <SelectValue placeholder="Select account" />
+            </SelectTrigger>
+            <SelectContent>
+              {accounts.map((a) => (
+                <SelectItem key={a.id} value={a.id}>
+                  {a.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </FormFieldWithHelp>
       </div>
+      {allowContributorType && (
+        <div className="min-w-[120px]">
+          <FormFieldWithHelp
+            id={`contrib-${rowIndex}-contributor`}
+            label="Type"
+            helpContent={formatHelp(HELP_CONTRIBUTIONS.contributorType)}
+          >
+            <Select
+              value={contributorType}
+              onValueChange={(value: ContributorType) =>
+                onUpdate({ ...contribution, contributorType: value })
+              }
+            >
+              <SelectTrigger id={`contrib-${rowIndex}-contributor`} className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="employee">Employee</SelectItem>
+                <SelectItem value="employer">Employer</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormFieldWithHelp>
+        </div>
+      )}
       {allowPercent ? (
         <>
           <div className="flex gap-3">
@@ -168,13 +203,15 @@ function ContributionRow({
       ) : (
         fixedAmountField
       )}
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         onClick={onRemove}
-        className="rounded-md px-2 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
+        className="text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
       >
         Remove
-      </button>
+      </Button>
     </div>
   );
 }
@@ -206,13 +243,15 @@ export function PayrollContributionsForm({
           Payroll investing — {personLabel}
         </h3>
         {accounts.length > 0 && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={handleAdd}
-            className="text-sm text-content-muted hover:text-content"
+            className="text-content-muted hover:text-content"
           >
             + Add contribution
-          </button>
+          </Button>
         )}
       </div>
       {accounts.length === 0 ? (
@@ -228,6 +267,7 @@ export function PayrollContributionsForm({
               accounts={accounts}
               rowIndex={i}
               allowPercent
+              allowContributorType
               onUpdate={(updated) => {
                 const next = [...contributions];
                 next[i] = updated;
@@ -262,13 +302,9 @@ export function MonthlySavingsForm() {
           Monthly savings
         </h2>
         {accounts.length > 0 && (
-          <button
-            type="button"
-            onClick={handleAdd}
-            className="rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background hover:bg-foreground/90"
-          >
+          <Button type="button" size="sm" onClick={handleAdd}>
             Add
-          </button>
+          </Button>
         )}
       </div>
       <p className="mt-1 text-sm text-content-muted">
@@ -323,13 +359,9 @@ export function OutOfPocketForm() {
           Out-of-pocket investing
         </h2>
         {accounts.length > 0 && (
-          <button
-            type="button"
-            onClick={handleAdd}
-            className="rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background hover:bg-foreground/90"
-          >
+          <Button type="button" size="sm" onClick={handleAdd}>
             Add
-          </button>
+          </Button>
         )}
       </div>
       <p className="mt-1 text-sm text-content-muted">

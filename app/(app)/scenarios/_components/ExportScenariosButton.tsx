@@ -2,6 +2,7 @@
 
 import { useHouseholdStore } from "@/stores/household";
 import { downloadScenariosJson } from "@/lib/utils/export-scenarios";
+import { Button } from "@/components/ui/button";
 
 export function ExportScenariosButton() {
   const { household } = useHouseholdStore();
@@ -13,11 +14,11 @@ export function ExportScenariosButton() {
   }
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="outline"
+      size="sm"
       onClick={handleExport}
       disabled={disabled}
-      className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm font-medium text-content hover:bg-surface-elevated disabled:cursor-not-allowed disabled:opacity-50"
       title={disabled ? "No scenarios to export" : "Download scenario assumptions as JSON"}
     >
       <svg
@@ -37,6 +38,6 @@ export function ExportScenariosButton() {
         <line x1="12" x2="12" y1="15" y2="3" />
       </svg>
       Export
-    </button>
+    </Button>
   );
 }

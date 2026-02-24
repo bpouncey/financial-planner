@@ -283,6 +283,11 @@ export const HELP_CONTRIBUTIONS: Record<string, HelpEntry> = {
     title: "Account",
     description: "The account this contribution goes into.",
   },
+  contributorType: {
+    title: "Employee vs employer",
+    description:
+      "Employee contributions are subject to the $23,500 limit (2025); employer contributions count toward the $70,000 combined limit. Use this when you have both types (e.g. 401k match).",
+  },
   amountMonthly: {
     title: "Amount ($/mo)",
     description: "Monthly contribution amount. Annual = monthly × 12.",

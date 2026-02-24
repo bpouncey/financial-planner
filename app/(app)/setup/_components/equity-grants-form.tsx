@@ -7,9 +7,16 @@ import { EquityGrantSchema } from "@/lib/types/zod";
 import { FormFieldWithHelp } from "@/components/ui/form-field-with-help";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { HELP_EQUITY, formatHelpContent } from "@/lib/copy/help";
-
-const inputBase =
-  "w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-content placeholder:text-content-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -219,13 +226,9 @@ export function EquityGrantsForm() {
             side="top"
           />
           {!editingId && !formState.id && accounts.length > 0 && people.length > 0 && (
-            <button
-              type="button"
-              onClick={handleStartAdd}
-              className="rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background hover:bg-foreground/90"
-            >
+            <Button type="button" size="sm" onClick={handleStartAdd}>
               Add grant
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -242,22 +245,26 @@ export function EquityGrantsForm() {
               helpContent={formatHelpContent(HELP_EQUITY.owner)}
             >
               <>
-                <select
-                  id="grant-owner"
+                <Select
                   value={formState.ownerPersonId}
-                  onChange={(e) =>
-                    setFormState((s) => ({ ...s, ownerPersonId: e.target.value }))
+                  onValueChange={(value) =>
+                    setFormState((s) => ({ ...s, ownerPersonId: value }))
                   }
-                  className={`${inputBase} ${ownerError ? "border-red-500 dark:border-red-500" : ""}`}
-                  required
                 >
-                  <option value="">Select person</option>
-                  {people.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger
+                    id="grant-owner"
+                    className={`w-full ${ownerError ? "border-destructive" : ""}`}
+                  >
+                    <SelectValue placeholder="Select person" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {people.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {ownerError && (
                   <p className="mt-1 text-sm text-red-600 dark:text-red-400">
                     {ownerError}
@@ -270,32 +277,33 @@ export function EquityGrantsForm() {
               label="Destination account"
               helpContent={formatHelpContent(HELP_EQUITY.destinationAccount)}
             >
-              <select
-                id="grant-destination"
+              <Select
                 value={formState.destinationAccountId}
-                onChange={(e) =>
+                onValueChange={(value) =>
                   setFormState((s) => ({
                     ...s,
-                    destinationAccountId: e.target.value,
+                    destinationAccountId: value,
                   }))
                 }
-                className={inputBase}
-                required
               >
-                <option value="">Select account</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} ({a.type})
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="grant-destination" className="w-full">
+                  <SelectValue placeholder="Select account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name} ({a.type})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </FormFieldWithHelp>
             <FormFieldWithHelp
               id="grant-start-year"
               label="Start year"
               helpContent={formatHelpContent(HELP_EQUITY.startYear)}
             >
-              <input
+              <Input
                 id="grant-start-year"
                 type="number"
                 min={CURRENT_YEAR - 5}
@@ -304,7 +312,6 @@ export function EquityGrantsForm() {
                 onChange={(e) =>
                   setFormState((s) => ({ ...s, startYear: e.target.value }))
                 }
-                className={inputBase}
               />
             </FormFieldWithHelp>
             <FormFieldWithHelp
@@ -312,7 +319,7 @@ export function EquityGrantsForm() {
               label="End year (optional)"
               helpContent={formatHelpContent(HELP_EQUITY.endYear)}
             >
-              <input
+              <Input
                 id="grant-end-year"
                 type="number"
                 min={CURRENT_YEAR - 5}
@@ -322,7 +329,6 @@ export function EquityGrantsForm() {
                   setFormState((s) => ({ ...s, endYear: e.target.value }))
                 }
                 placeholder="Same as last vest"
-                className={inputBase}
               />
             </FormFieldWithHelp>
             <FormFieldWithHelp
@@ -330,20 +336,23 @@ export function EquityGrantsForm() {
               label="Price assumption"
               helpContent={formatHelpContent(HELP_EQUITY.priceMode)}
             >
-              <select
-                id="grant-price-mode"
+              <Select
                 value={formState.priceMode}
-                onChange={(e) =>
+                onValueChange={(value) =>
                   setFormState((s) => ({
                     ...s,
-                    priceMode: e.target.value as PriceAssumptionMode,
+                    priceMode: value as PriceAssumptionMode,
                   }))
                 }
-                className={inputBase}
               >
-                <option value="FIXED">Fixed price</option>
-                <option value="GROWTH">Growth rate</option>
-              </select>
+                <SelectTrigger id="grant-price-mode" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="FIXED">Fixed price</SelectItem>
+                  <SelectItem value="GROWTH">Growth rate</SelectItem>
+                </SelectContent>
+              </Select>
             </FormFieldWithHelp>
             {formState.priceMode === "FIXED" ? (
               <FormFieldWithHelp
@@ -351,7 +360,7 @@ export function EquityGrantsForm() {
                 label="Price per share ($)"
                 helpContent={formatHelpContent(HELP_EQUITY.fixedPrice)}
               >
-                <input
+                <Input
                   id="grant-fixed-price"
                   type="number"
                   step="0.01"
@@ -361,7 +370,6 @@ export function EquityGrantsForm() {
                     setFormState((s) => ({ ...s, fixedPrice: e.target.value }))
                   }
                   placeholder="0"
-                  className={inputBase}
                   required={formState.priceMode === "FIXED"}
                 />
               </FormFieldWithHelp>
@@ -371,7 +379,7 @@ export function EquityGrantsForm() {
                 label="Price growth % per year"
                 helpContent={formatHelpContent(HELP_EQUITY.growthRate)}
               >
-                <input
+                <Input
                   id="grant-growth-rate"
                   type="number"
                   step="0.1"
@@ -380,7 +388,6 @@ export function EquityGrantsForm() {
                     setFormState((s) => ({ ...s, growthRate: e.target.value }))
                   }
                   placeholder="0"
-                  className={inputBase}
                   required={formState.priceMode === "GROWTH"}
                 />
               </FormFieldWithHelp>
@@ -391,7 +398,7 @@ export function EquityGrantsForm() {
                 label="Starting price per share ($)"
                 helpContent={formatHelpContent(HELP_EQUITY.fixedPrice)}
               >
-                <input
+                <Input
                   id="grant-fixed-price-growth"
                   type="number"
                   step="0.01"
@@ -401,7 +408,6 @@ export function EquityGrantsForm() {
                     setFormState((s) => ({ ...s, fixedPrice: e.target.value }))
                   }
                   placeholder="0"
-                  className={inputBase}
                 />
               </FormFieldWithHelp>
             )}
@@ -410,7 +416,7 @@ export function EquityGrantsForm() {
               label="Withholding %"
               helpContent={formatHelpContent(HELP_EQUITY.withholdingRate)}
             >
-              <input
+              <Input
                 id="grant-withholding"
                 type="number"
                 step="1"
@@ -420,7 +426,6 @@ export function EquityGrantsForm() {
                 onChange={(e) =>
                   setFormState((s) => ({ ...s, withholdingRate: e.target.value }))
                 }
-                className={inputBase}
               />
             </FormFieldWithHelp>
           </div>
@@ -428,26 +433,27 @@ export function EquityGrantsForm() {
           <div className="mt-4">
             <div className="mb-2 flex items-center justify-between">
               <div className="flex items-center gap-1.5">
-                <label className="block text-sm font-medium text-content-muted">
+                <Label className="text-muted-foreground">
                   Vesting schedule
-                </label>
+                </Label>
                 <HelpTooltip
                   content={formatHelpContent(HELP_EQUITY.vestingTable)}
                   side="top"
                 />
               </div>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={addVestingRow}
-                className="text-sm text-content-muted hover:text-content"
               >
                 + Add year
-              </button>
+              </Button>
             </div>
             <div className="space-y-2">
               {formState.vestingEntries.map((entry, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <input
+                  <Input
                     type="number"
                     min={CURRENT_YEAR - 5}
                     max={CURRENT_YEAR + 30}
@@ -456,9 +462,9 @@ export function EquityGrantsForm() {
                       updateVestingRow(i, "year", e.target.value)
                     }
                     placeholder="Year"
-                    className={`${inputBase} w-24`}
+                    className="w-24"
                   />
-                  <input
+                  <Input
                     type="number"
                     step="1"
                     min="0"
@@ -467,16 +473,18 @@ export function EquityGrantsForm() {
                       updateVestingRow(i, "shares", e.target.value)
                     }
                     placeholder="Shares"
-                    className={`${inputBase} w-28`}
+                    className="w-28"
                   />
                   {formState.vestingEntries.length > 1 && (
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() => removeVestingRow(i)}
-                      className="rounded-md px-2 py-1 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
+                      className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/30"
                     >
                       Remove
-                    </button>
+                    </Button>
                   )}
                 </div>
               ))}
@@ -484,19 +492,17 @@ export function EquityGrantsForm() {
           </div>
 
           <div className="mt-4 flex gap-2">
-            <button
-              type="submit"
-              className="rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background hover:bg-foreground/90"
-            >
+            <Button type="submit" size="sm">
               {editingId ? "Save" : "Add"}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={handleCancel}
-              className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-content hover:bg-surface-elevated"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </form>
       )}
@@ -528,20 +534,23 @@ export function EquityGrantsForm() {
                   </span>
                 </div>
                 <div className="flex gap-2">
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => handleStartEdit(grant)}
-                    className="rounded-md px-2 py-1 text-sm text-content-muted hover:bg-surface-elevated hover:text-content"
                   >
                     Edit
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => handleDelete(grant.id)}
-                    className="rounded-md px-2 py-1 text-sm text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/30 dark:hover:text-red-300"
+                    className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/30 dark:hover:text-red-300"
                   >
                     Delete
-                  </button>
+                  </Button>
                 </div>
               </li>
             );

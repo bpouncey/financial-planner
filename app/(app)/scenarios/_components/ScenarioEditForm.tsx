@@ -18,9 +18,15 @@ import {
 import { FormFieldWithHelp } from "@/components/ui/form-field-with-help";
 import { HELP_FORM, HELP_EVENTS, formatHelpContent } from "@/lib/copy/help";
 import { ModelingModeGuide } from "./ModelingModeGuide";
-
-const inputBase =
-  "w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-content placeholder-content-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 function parseCurrency(value: string): number {
   const cleaned = value.replace(/[^0-9.-]/g, "");
@@ -98,13 +104,15 @@ function ContributionOverridesSection({
         Does not change your base plan.
       </p>
       <div className="space-y-3">
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={handleAdd}
-          className="text-sm text-content-muted hover:text-content"
+          className="text-content-muted hover:text-content"
         >
           + Add override
-        </button>
+        </Button>
         {overrides.map((o, i) => (
           <ContributionOverrideRow
             key={i}
@@ -145,52 +153,62 @@ function ContributionOverrideRow({
     <div className="flex flex-wrap items-end gap-2 rounded-md border border-border bg-surface/50 p-3">
       <div className="min-w-[100px]">
         <label className="mb-1 block text-xs text-content-muted">Source</label>
-        <select
+        <Select
           value={override.source}
-          onChange={(e) => {
-            const source = e.target.value as ContributionOverride["source"];
+          onValueChange={(source: ContributionOverride["source"]) => {
             onUpdate({
               source,
               personId: source === "payroll" ? people[0]?.id : undefined,
             });
           }}
-          className={inputBase}
         >
-          <option value="payroll">Payroll</option>
-          <option value="outOfPocket">Out-of-pocket</option>
-          <option value="monthlySavings">Monthly savings</option>
-        </select>
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="payroll">Payroll</SelectItem>
+            <SelectItem value="outOfPocket">Out-of-pocket</SelectItem>
+            <SelectItem value="monthlySavings">Monthly savings</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       {override.source === "payroll" && (
         <div className="min-w-[120px]">
           <label className="mb-1 block text-xs text-content-muted">Person</label>
-          <select
+          <Select
             value={override.personId ?? ""}
-            onChange={(e) => onUpdate({ personId: e.target.value })}
-            className={inputBase}
+            onValueChange={(val) => onUpdate({ personId: val })}
           >
-            {people.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {people.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
       <div className="min-w-[160px] flex-1">
         <label className="mb-1 block text-xs text-content-muted">Account</label>
-        <select
+        <Select
           value={override.accountId}
-          onChange={(e) => onUpdate({ accountId: e.target.value })}
-          className={inputBase}
+          onValueChange={(val) => onUpdate({ accountId: val })}
         >
-          <option value="">Select account</option>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select account" />
+          </SelectTrigger>
+          <SelectContent>
+            {accounts.map((a) => (
+              <SelectItem key={a.id} value={a.id}>
+                {a.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="flex gap-3">
         <label className="flex cursor-pointer items-center gap-2">
@@ -229,7 +247,7 @@ function ContributionOverrideRow({
       {isPercentMode ? (
         <div className="w-20">
           <label className="mb-1 block text-xs text-content-muted">%</label>
-          <input
+          <Input
             type="number"
             step="0.5"
             min="0"
@@ -244,13 +262,12 @@ function ContributionOverrideRow({
               });
             }}
             placeholder="0"
-            className={inputBase}
           />
         </div>
       ) : (
         <div className="w-28">
           <label className="mb-1 block text-xs text-content-muted">$/yr</label>
-          <input
+          <Input
             type="number"
             step="1"
             min="0"
@@ -264,17 +281,18 @@ function ContributionOverrideRow({
               });
             }}
             placeholder="0"
-            className={inputBase}
           />
         </div>
       )}
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         onClick={onRemove}
-        className="rounded-md px-2 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
+        className="text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
       >
         Remove
-      </button>
+      </Button>
     </div>
   );
 }
@@ -398,13 +416,15 @@ function EventOverridesSection({
       </p>
       <div className="space-y-3">
         {!editingId && !formState.id && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={handleStartAdd}
-            className="text-sm text-content-muted hover:text-content"
+            className="text-content-muted hover:text-content"
           >
             + Add event
-          </button>
+          </Button>
         )}
         {(editingId || formState.id) && (
           <form
@@ -418,7 +438,7 @@ function EventOverridesSection({
                 helpContent={formatHelpContent(HELP_EVENTS.name)}
               >
                 <>
-                  <input
+                  <Input
                     id="event-override-name"
                     type="text"
                     value={formState.name}
@@ -426,7 +446,7 @@ function EventOverridesSection({
                       setFormState((s) => ({ ...s, name: e.target.value }))
                     }
                     placeholder="e.g. Jillian RSU vest"
-                    className={`${inputBase} ${nameError ? "border-red-500 dark:border-red-500" : ""}`}
+                    aria-invalid={!!nameError || undefined}
                   />
                   {nameError && (
                     <p className="mt-1 text-sm text-red-600 dark:text-red-400">
@@ -440,30 +460,30 @@ function EventOverridesSection({
                 label="Type"
                 helpContent={formatHelpContent(HELP_EVENTS.kind)}
               >
-                <select
-                  id="event-override-kind"
+                <Select
                   value={formState.kind}
-                  onChange={(e) =>
-                    setFormState((s) => ({
-                      ...s,
-                      kind: e.target.value as EventKind,
-                    }))
+                  onValueChange={(val: EventKind) =>
+                    setFormState((s) => ({ ...s, kind: val }))
                   }
-                  className={inputBase}
                 >
-                  {EVENT_KINDS.map(({ value, label }) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="event-override-kind" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EVENT_KINDS.map(({ value, label }) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </FormFieldWithHelp>
               <FormFieldWithHelp
                 id="event-override-year"
                 label="Year"
                 helpContent={formatHelpContent(HELP_EVENTS.year)}
               >
-                <input
+                <Input
                   id="event-override-year"
                   type="number"
                   min={CURRENT_YEAR - 5}
@@ -472,7 +492,6 @@ function EventOverridesSection({
                   onChange={(e) =>
                     setFormState((s) => ({ ...s, year: e.target.value }))
                   }
-                  className={inputBase}
                 />
               </FormFieldWithHelp>
               <FormFieldWithHelp
@@ -480,7 +499,7 @@ function EventOverridesSection({
                 label="Amount ($)"
                 helpContent={formatHelpContent(HELP_EVENTS.amount)}
               >
-                <input
+                <Input
                   id="event-override-amount"
                   type="number"
                   step="0.01"
@@ -489,7 +508,6 @@ function EventOverridesSection({
                     setFormState((s) => ({ ...s, amount: e.target.value }))
                   }
                   placeholder="0"
-                  className={inputBase}
                 />
               </FormFieldWithHelp>
               <FormFieldWithHelp
@@ -501,38 +519,37 @@ function EventOverridesSection({
                 }
                 helpContent={formatHelpContent(HELP_EVENTS.account)}
               >
-                <select
-                  id="event-override-account"
+                <Select
                   value={formState.accountId}
-                  onChange={(e) =>
-                    setFormState((s) => ({ ...s, accountId: e.target.value }))
+                  onValueChange={(val) =>
+                    setFormState((s) => ({ ...s, accountId: val }))
                   }
-                  className={inputBase}
-                  required
                 >
-                  <option value="">Select account</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name} ({a.type})
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="event-override-account" className="w-full">
+                    <SelectValue placeholder="Select account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name} ({a.type})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </FormFieldWithHelp>
             </div>
             <div className="mt-4 flex gap-2">
-              <button
-                type="submit"
-                className="rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background hover:bg-foreground/90"
-              >
+              <Button type="submit" size="sm">
                 {editingId ? "Save" : "Add"}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={handleCancel}
-                className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-content hover:bg-surface-elevated"
               >
                 Cancel
-              </button>
+              </Button>
             </div>
           </form>
         )}
@@ -553,20 +570,23 @@ function EventOverridesSection({
                   </span>
                 </div>
                 <div className="flex gap-2">
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => handleStartEdit(event)}
-                    className="rounded-md px-2 py-1 text-sm text-content-muted hover:bg-surface-elevated hover:text-content"
                   >
                     Edit
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => handleDelete(event.id)}
-                    className="rounded-md px-2 py-1 text-sm text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/30 dark:hover:text-red-300"
+                    className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/30 dark:hover:text-red-300"
                   >
                     Delete
-                  </button>
+                  </Button>
                 </div>
               </li>
             ))}
@@ -609,7 +629,7 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
           label="Name"
           helpContent={formatHelpContent(HELP_FORM.scenarioName)}
         >
-          <input
+          <Input
             id="scenario-name"
             type="text"
             value={scenario.name}
@@ -618,7 +638,6 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
                 name: e.target.value.trim() || "Base",
               })
             }
-            className={inputBase}
             placeholder="Base"
           />
         </FormFieldWithHelp>
@@ -638,26 +657,27 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
             label="Mode"
             helpContent={formatHelpContent(HELP_FORM.modelingMode)}
           >
-            <select
-              id="modeling-mode"
+            <Select
               value={scenario.modelingMode}
-              onChange={(e) =>
-                updateScenario(scenario.id, {
-                  modelingMode: e.target.value as ModelingMode,
-                })
+              onValueChange={(val: ModelingMode) =>
+                updateScenario(scenario.id, { modelingMode: val })
               }
-              className={inputBase}
             >
-              <option value="REAL">Real (today&apos;s dollars)</option>
-              <option value="NOMINAL">Nominal</option>
-            </select>
+              <SelectTrigger id="modeling-mode" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="REAL">Real (today&apos;s dollars)</SelectItem>
+                <SelectItem value="NOMINAL">Nominal</SelectItem>
+              </SelectContent>
+            </Select>
           </FormFieldWithHelp>
           <FormFieldWithHelp
             id="nominal-return"
             label="Nominal return (%)"
             helpContent={formatHelpContent(HELP_FORM.nominalReturn)}
           >
-            <input
+            <Input
               id="nominal-return"
               type="text"
               inputMode="numeric"
@@ -667,7 +687,6 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
                 updateScenario(scenario.id, { nominalReturn: v });
               }}
               placeholder={String(DEFAULT_NOMINAL_RETURN * 100)}
-              className={inputBase}
             />
           </FormFieldWithHelp>
           <FormFieldWithHelp
@@ -675,7 +694,7 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
             label="Inflation (%)"
             helpContent={formatHelpContent(HELP_FORM.inflation)}
           >
-            <input
+            <Input
               id="inflation"
               type="text"
               inputMode="numeric"
@@ -685,7 +704,6 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
                 updateScenario(scenario.id, { inflation: v });
               }}
               placeholder={String(DEFAULT_INFLATION * 100)}
-              className={inputBase}
             />
           </FormFieldWithHelp>
           <FormFieldWithHelp
@@ -693,7 +711,7 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
             label="Safe withdrawal rate (SWR %)"
             helpContent={formatHelpContent(HELP_FORM.swr)}
           >
-            <input
+            <Input
               id="swr"
               type="text"
               inputMode="numeric"
@@ -703,7 +721,6 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
                 updateScenario(scenario.id, { swr: v });
               }}
               placeholder={String(DEFAULT_SWR * 100)}
-              className={inputBase}
             />
           </FormFieldWithHelp>
         </div>
@@ -748,7 +765,7 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
                 label="Take-home (annual $)"
                 helpContent={formatHelpContent(HELP_FORM.takeHomeAnnual)}
               >
-                <input
+                <Input
                   id="take-home"
                   type="text"
                   inputMode="numeric"
@@ -765,7 +782,6 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
                     });
                   }}
                   placeholder="$0"
-                  className={inputBase}
                 />
               </FormFieldWithHelp>
             </div>
@@ -777,7 +793,7 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
                 label="Effective tax rate (%)"
                 helpContent={formatHelpContent(HELP_FORM.effectiveTaxRate)}
               >
-                <input
+                <Input
                   id="effective-rate"
                   type="text"
                   inputMode="numeric"
@@ -794,7 +810,6 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
                     });
                   }}
                   placeholder="25"
-                  className={inputBase}
                 />
               </FormFieldWithHelp>
             </div>
@@ -807,7 +822,7 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
                 HELP_FORM.retirementEffectiveTaxRate
               )}
             >
-              <input
+              <Input
                 id="retirement-tax-rate"
                 type="text"
                 inputMode="numeric"
@@ -830,7 +845,6 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
                   });
                 }}
                 placeholder="0 (no tax)"
-                className={inputBase}
               />
             </FormFieldWithHelp>
           </div>
@@ -848,7 +862,7 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
             label="Retirement monthly spend ($)"
             helpContent={formatHelpContent(HELP_FORM.retirementMonthlySpend)}
           >
-            <input
+            <Input
               id="retirement-spend"
               type="text"
               inputMode="numeric"
@@ -862,7 +876,6 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
                 updateScenario(scenario.id, { retirementMonthlySpend: v });
               }}
               placeholder="$5,000"
-              className={inputBase}
             />
           </FormFieldWithHelp>
           <FormFieldWithHelp
@@ -870,7 +883,7 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
             label="Current monthly spend ($)"
             helpContent={formatHelpContent(HELP_FORM.currentMonthlySpend)}
           >
-            <input
+            <Input
               id="current-spend"
               type="text"
               inputMode="numeric"
@@ -887,7 +900,6 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
                 });
               }}
               placeholder="Same as retirement"
-              className={inputBase}
             />
           </FormFieldWithHelp>
         </div>
@@ -942,7 +954,7 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
               </div>
               {scenario.salaryGrowthOverride != null && (
                 <div className="max-w-xs">
-                  <input
+                  <Input
                     id="salary-growth-override"
                     type="text"
                     inputMode="numeric"
@@ -961,7 +973,6 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
                       });
                     }}
                     placeholder="3"
-                    className={inputBase}
                   />
                 </div>
               )}
@@ -973,7 +984,7 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
               label="Stress test: first year return (%)"
               helpContent={formatHelpContent(HELP_FORM.stressTestFirstYearReturn)}
             >
-              <input
+              <Input
                 id="stress-test"
                 type="text"
                 inputMode="numeric"
@@ -996,7 +1007,6 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
                   });
                 }}
                 placeholder="Normal returns"
-                className={inputBase}
               />
             </FormFieldWithHelp>
           </div>

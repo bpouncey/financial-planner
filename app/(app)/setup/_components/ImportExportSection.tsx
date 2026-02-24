@@ -4,6 +4,9 @@ import { useRef, useState } from "react";
 import { useHouseholdStore } from "@/stores/household";
 import { HouseholdSchema } from "@/lib/types/zod";
 import type { Household } from "@/lib/types/zod";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { CircleAlert } from "lucide-react";
 
 function downloadJson(data: Household, filename: string) {
   const json = JSON.stringify(data, null, 2);
@@ -67,10 +70,11 @@ export function ImportExportSection() {
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <button
+      <Button
         type="button"
+        variant="outline"
+        size="sm"
         onClick={handleExport}
-        className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm font-medium text-content hover:bg-surface-elevated"
         title="Download household setup as JSON"
       >
         <svg
@@ -90,11 +94,12 @@ export function ImportExportSection() {
           <line x1="12" x2="12" y1="15" y2="3" />
         </svg>
         Export
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
+        variant="outline"
+        size="sm"
         onClick={handleImportClick}
-        className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm font-medium text-content hover:bg-surface-elevated"
         title="Import household setup from JSON"
       >
         <svg
@@ -114,7 +119,7 @@ export function ImportExportSection() {
           <line x1="12" x2="12" y1="3" y2="15" />
         </svg>
         Import
-      </button>
+      </Button>
       <input
         ref={fileInputRef}
         type="file"
@@ -124,12 +129,10 @@ export function ImportExportSection() {
         aria-hidden
       />
       {importError && (
-        <div
-          role="alert"
-          className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/50 dark:text-red-200"
-        >
-          {importError}
-        </div>
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertDescription>{importError}</AlertDescription>
+        </Alert>
       )}
     </div>
   );

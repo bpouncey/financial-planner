@@ -195,6 +195,7 @@ function overrideToContribution(o: ContributionOverride): Contribution {
     amountAnnual: o.amountAnnual,
     amountMonthly: o.amountMonthly,
     percentOfIncome: o.percentOfIncome,
+    contributorType: o.contributorType,
     startYear: o.startYear,
     endYear: o.endYear,
     startMonth: o.startMonth,

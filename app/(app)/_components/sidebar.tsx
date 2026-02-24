@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useHouseholdStore } from "@/stores/household";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/setup", label: "Setup" },
@@ -36,17 +38,20 @@ export function Sidebar() {
         {navItems.map(({ href, label }) => {
           const isActive = pathname === href;
           return (
-            <Link
+            <Button
               key={href}
-              href={href}
-              className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+              asChild
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "justify-start px-3",
                 isActive
                   ? "bg-surface text-content"
                   : "text-content-muted hover:bg-surface hover:text-content"
-              }`}
+              )}
             >
-              {label}
-            </Link>
+              <Link href={href}>{label}</Link>
+            </Button>
           );
         })}
       </nav>
@@ -60,25 +65,28 @@ export function Sidebar() {
             const isActive = scenario.id === activeScenarioId;
             return (
               <li key={scenario.id} className="group flex items-center gap-1">
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setActiveScenarioId(scenario.id)}
-                  className={`flex-1 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors ${
+                  className={cn(
+                    "flex-1 justify-start px-3",
                     isActive
                       ? "bg-surface text-content"
                       : "text-content-muted hover:bg-surface hover:text-content"
-                  }`}
+                  )}
                 >
                   {scenario.name}
-                </button>
+                </Button>
                 <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     onClick={(e) => {
                       e.stopPropagation();
                       duplicateScenario(scenario.id);
                     }}
-                    className="rounded p-1 text-content-muted hover:bg-surface hover:text-content"
+                    className="text-content-muted hover:bg-surface hover:text-content"
                     title="Duplicate scenario"
                     aria-label={`Duplicate ${scenario.name}`}
                   >
@@ -96,15 +104,16 @@ export function Sidebar() {
                       <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
                       <path d="M4 16V4a2 2 0 0 1 2-2h12" />
                     </svg>
-                  </button>
-                  <button
-                    type="button"
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     onClick={(e) => {
                       e.stopPropagation();
                       if (canDelete) deleteScenario(scenario.id);
                     }}
                     disabled={!canDelete}
-                    className="rounded p-1 text-content-muted hover:bg-surface hover:text-content disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="text-content-muted hover:bg-surface hover:text-content"
                     title={canDelete ? "Delete scenario" : "Keep at least one scenario"}
                     aria-label={`Delete ${scenario.name}`}
                   >
@@ -123,7 +132,7 @@ export function Sidebar() {
                       <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
                       <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
                     </svg>
-                  </button>
+                  </Button>
                 </div>
               </li>
             );

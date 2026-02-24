@@ -1,6 +1,11 @@
 "use client";
 
-import * as TooltipPrimitive from "@radix-ui/react-tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 type TooltipSide = "top" | "right" | "bottom" | "left";
 
@@ -37,7 +42,7 @@ export function HelpTooltip({
   const defaultTrigger = (
     <button
       type="button"
-      className="inline-flex h-4 w-4 shrink-0 cursor-help items-center justify-center rounded text-content-muted hover:text-content focus:outline-none focus-visible:ring-2 focus-visible:ring-border focus-visible:ring-offset-1"
+      className="inline-flex h-4 w-4 shrink-0 cursor-help items-center justify-center rounded text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
       aria-label="Help"
     >
       <InfoIcon />
@@ -47,21 +52,13 @@ export function HelpTooltip({
   const trigger = children ?? defaultTrigger;
 
   return (
-    <TooltipPrimitive.TooltipProvider delayDuration={400}>
-      <TooltipPrimitive.Tooltip>
-        <TooltipPrimitive.TooltipTrigger asChild>
-          {trigger}
-        </TooltipPrimitive.TooltipTrigger>
-        <TooltipPrimitive.Portal>
-          <TooltipPrimitive.Content
-            side={side}
-            sideOffset={6}
-            className="z-50 max-w-xs rounded-md bg-content px-3 py-2 text-sm text-background shadow-md"
-          >
-            {content}
-          </TooltipPrimitive.Content>
-        </TooltipPrimitive.Portal>
-      </TooltipPrimitive.Tooltip>
-    </TooltipPrimitive.TooltipProvider>
+    <TooltipProvider delayDuration={400}>
+      <Tooltip>
+        <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+        <TooltipContent side={side} sideOffset={6} className="max-w-xs text-sm">
+          {content}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

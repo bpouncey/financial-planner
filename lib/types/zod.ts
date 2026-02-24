@@ -64,12 +64,18 @@ export const EquityPolicySchema = z
   .optional();
 export type EquityPolicy = z.infer<typeof EquityPolicySchema>;
 
+/** Employee vs employer: IRS limits differ (e.g. 401k employee $23.5k, combined $70k). Payroll only. */
+export const ContributorTypeSchema = z.enum(["employee", "employer"]);
+export type ContributorType = z.infer<typeof ContributorTypeSchema>;
+
 export const ContributionSchema = z
   .object({
     accountId: z.string(),
     amountAnnual: z.number().optional(),
     amountMonthly: z.number().optional(),
     percentOfIncome: z.number().min(0).max(100).optional(),
+    /** Employee vs employer contributions; payroll only. Default employee. Affects 401k/403b limit checks. */
+    contributorType: ContributorTypeSchema.optional().default("employee"),
     startYear: z.number().optional(),
     endYear: z.number().optional(),
     startMonth: z.number().min(1).max(12).optional(),
@@ -92,6 +98,7 @@ export const ContributionOverrideSchema = z
     amountAnnual: z.number().optional(),
     amountMonthly: z.number().optional(),
     percentOfIncome: z.number().min(0).max(100).optional(),
+    contributorType: ContributorTypeSchema.optional(),
     startYear: z.number().optional(),
     endYear: z.number().optional(),
     startMonth: z.number().min(1).max(12).optional(),

@@ -7,8 +7,23 @@ import { AccountSchema } from "@/lib/types/zod";
 import { FormFieldWithHelp } from "@/components/ui/form-field-with-help";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { ContributionLimitIndicator } from "@/components/contribution-limit-indicator";
-import { getContributionsByAccount, LIMITED_ACCOUNT_TYPES } from "@/lib/model/contribution-limits";
+import {
+  getContributionsByAccount,
+  getContributionsBreakdown,
+  LIMITED_ACCOUNT_TYPES,
+} from "@/lib/model/contribution-limits";
 import { HELP_ACCOUNTS, formatHelpContent } from "@/lib/copy/help";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
   { value: "CASH", label: "Cash" },
@@ -34,9 +49,6 @@ function getOwnerLabel(owner: Owner, personAName: string, personBName: string): 
       return owner;
   }
 }
-
-const inputBase =
-  "w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-content placeholder:text-content-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
 
 interface AccountFormState {
   id: string;
@@ -154,13 +166,9 @@ export function AccountsForm() {
           Accounts
         </h2>
         {!editingId && !formState.id && (
-          <button
-            type="button"
-            onClick={handleStartAdd}
-            className="rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background hover:bg-foreground/90"
-          >
+          <Button type="button" size="sm" onClick={handleStartAdd}>
             Add account
-          </button>
+          </Button>
         )}
       </div>
 
@@ -176,13 +184,13 @@ export function AccountsForm() {
               helpContent={formatHelpContent(HELP_ACCOUNTS.name)}
             >
               <>
-                <input
+                <Input
                   id="account-name"
                   type="text"
                   value={formState.name}
                   onChange={(e) => setFormState((s) => ({ ...s, name: e.target.value }))}
                   placeholder="e.g. Vanguard 401k"
-                  className={`${inputBase} ${nameError ? "border-red-500 dark:border-red-500" : ""}`}
+                  aria-invalid={!!nameError}
                 />
                 {nameError && (
                   <p className="mt-1 text-sm text-red-600 dark:text-red-400">{nameError}</p>
@@ -194,52 +202,58 @@ export function AccountsForm() {
               label="Type"
               helpContent={formatHelpContent(HELP_ACCOUNTS.type)}
             >
-              <select
-                id="account-type"
+              <Select
                 value={formState.type}
-                onChange={(e) => {
-                  const newType = e.target.value as AccountType;
+                onValueChange={(val) => {
+                  const newType = val as AccountType;
                   setFormState((s) => ({
                     ...s,
                     type: newType,
                     apy: newType === "MONEY_MARKET" ? s.apy : "",
                   }));
                 }}
-                className={inputBase}
               >
-                {ACCOUNT_TYPES.map(({ value, label }) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="account-type" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACCOUNT_TYPES.map(({ value, label }) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </FormFieldWithHelp>
             <FormFieldWithHelp
               id="account-owner"
               label="Owner"
               helpContent={formatHelpContent(HELP_ACCOUNTS.owner)}
             >
-              <select
-                id="account-owner"
+              <Select
                 value={formState.owner}
-                onChange={(e) =>
-                  setFormState((s) => ({ ...s, owner: e.target.value as Owner }))
+                onValueChange={(val) =>
+                  setFormState((s) => ({ ...s, owner: val as Owner }))
                 }
-                className={inputBase}
               >
-                {OWNER_OPTIONS.map((owner) => (
-                  <option key={owner} value={owner}>
-                    {getOwnerLabel(owner, personAName, personBName)}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="account-owner" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {OWNER_OPTIONS.map((owner) => (
+                    <SelectItem key={owner} value={owner}>
+                      {getOwnerLabel(owner, personAName, personBName)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </FormFieldWithHelp>
             <FormFieldWithHelp
               id="account-balance"
               label="Starting balance ($)"
               helpContent={formatHelpContent(HELP_ACCOUNTS.startingBalance)}
             >
-              <input
+              <Input
                 id="account-balance"
                 type="number"
                 step="0.01"
@@ -248,7 +262,6 @@ export function AccountsForm() {
                 onChange={(e) =>
                   setFormState((s) => ({ ...s, startingBalance: e.target.value }))
                 }
-                className={inputBase}
               />
             </FormFieldWithHelp>
             {formState.type === "MONEY_MARKET" && (
@@ -257,7 +270,7 @@ export function AccountsForm() {
                 label="APY (%)"
                 helpContent={formatHelpContent(HELP_ACCOUNTS.apy)}
               >
-                <input
+                <Input
                   id="account-apy"
                   type="number"
                   step="0.01"
@@ -268,45 +281,35 @@ export function AccountsForm() {
                   onChange={(e) =>
                     setFormState((s) => ({ ...s, apy: e.target.value }))
                   }
-                  className={inputBase}
                 />
               </FormFieldWithHelp>
             )}
           </div>
           <div className="mt-4 flex items-center gap-2">
-            <label className="flex cursor-pointer items-center gap-2">
-              <input
+            <div className="flex items-center gap-2">
+              <Checkbox
                 id="account-included-in-fi"
-                type="checkbox"
                 checked={formState.includedInFIAssets}
-                onChange={(e) =>
-                  setFormState((s) => ({ ...s, includedInFIAssets: e.target.checked }))
+                onCheckedChange={(checked) =>
+                  setFormState((s) => ({ ...s, includedInFIAssets: checked === true }))
                 }
-                className="h-4 w-4 rounded border-border bg-surface text-content focus:ring-accent"
               />
-              <span className="text-sm text-content-muted">
+              <Label htmlFor="account-included-in-fi" className="text-muted-foreground cursor-pointer">
                 Include in FI assets
-              </span>
-            </label>
+              </Label>
+            </div>
             <HelpTooltip
               content={formatHelpContent(HELP_ACCOUNTS.includedInFIAssets)}
               side="top"
             />
           </div>
           <div className="mt-4 flex gap-2">
-            <button
-              type="submit"
-              className="rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background hover:bg-foreground/90"
-            >
+            <Button type="submit" size="sm">
               {editingId ? "Save" : "Add"}
-            </button>
-            <button
-              type="button"
-              onClick={handleCancel}
-              className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-content hover:bg-surface-elevated"
-            >
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={handleCancel}>
               Cancel
-            </button>
+            </Button>
           </div>
         </form>
       )}
@@ -326,6 +329,15 @@ export function AccountsForm() {
                   )
                 : {};
             const contributed = contributions[account.id] ?? 0;
+            const breakdown =
+              scenario != null
+                ? getContributionsBreakdown(
+                    household,
+                    scenario,
+                    household.startYear
+                  )
+                : {};
+            const accountBreakdown = breakdown[account.id];
             const hasLimit = LIMITED_ACCOUNT_TYPES.includes(account.type);
 
             return (
@@ -343,32 +355,36 @@ export function AccountsForm() {
                   {!account.includedInFIAssets && " · excluded from FI"}
                 </span>
                 {hasLimit && (
-                  <div className="mt-2 w-full max-w-[200px]">
+                  <div className="mt-2 w-full max-w-[240px]">
                     <ContributionLimitIndicator
                       accountId={account.id}
                       accountType={account.type}
                       contributed={contributed}
                       year={household.startYear}
+                      breakdown={accountBreakdown}
                       variant="full"
                     />
                   </div>
                 )}
               </div>
               <div className="flex shrink-0 gap-2">
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => handleStartEdit(account)}
-                  className="rounded-md px-2 py-1 text-sm text-content-muted hover:bg-surface-elevated hover:text-content"
                 >
                   Edit
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/30 dark:hover:text-red-300"
                   onClick={() => handleDelete(account.id)}
-                  className="rounded-md px-2 py-1 text-sm text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/30 dark:hover:text-red-300"
                 >
                   Delete
-                </button>
+                </Button>
               </div>
             </li>
             );

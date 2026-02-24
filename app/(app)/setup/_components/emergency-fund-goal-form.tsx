@@ -3,9 +3,17 @@
 import { useHouseholdStore } from "@/stores/household";
 import { FormFieldWithHelp } from "@/components/ui/form-field-with-help";
 import { formatHelpContent, HELP_EMERGENCY_FUND } from "@/lib/copy/help";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-const inputBase =
-  "w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-content placeholder:text-content-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
+const NONE = "none";
 
 export function EmergencyFundGoalForm() {
   const { household, setEmergencyFundGoal } = useHouseholdStore();
@@ -28,9 +36,10 @@ export function EmergencyFundGoalForm() {
 
   function handleAccountChange(id: string) {
     if (!targetAmount) return;
+    const resolved = id === NONE ? "" : id;
     setEmergencyFundGoal({
       targetAmount,
-      accountId: id || null,
+      accountId: resolved || null,
     });
   }
 
@@ -59,7 +68,7 @@ export function EmergencyFundGoalForm() {
               label="Target ($)"
               helpContent={formatHelpContent(HELP_EMERGENCY_FUND.targetAmount)}
             >
-              <input
+              <Input
                 id="emergency-fund-target"
                 type="number"
                 step="100"
@@ -70,7 +79,6 @@ export function EmergencyFundGoalForm() {
                   handleTargetChange(Number.isNaN(v) ? 0 : v);
                 }}
                 placeholder="e.g. 15000"
-                className={inputBase}
               />
             </FormFieldWithHelp>
           </div>
@@ -80,29 +88,33 @@ export function EmergencyFundGoalForm() {
               label="Account to track"
               helpContent={formatHelpContent(HELP_EMERGENCY_FUND.account)}
             >
-              <select
-                id="emergency-fund-account"
-                value={accountId}
-                onChange={(e) => handleAccountChange(e.target.value)}
-                className={inputBase}
+              <Select
+                value={accountId || NONE}
+                onValueChange={handleAccountChange}
               >
-                <option value="">Select account</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="emergency-fund-account" className="w-full">
+                  <SelectValue placeholder="Select account" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>Select account</SelectItem>
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </FormFieldWithHelp>
           </div>
           {goal && (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={handleClear}
-              className="rounded-md px-2 py-1.5 text-sm text-content-muted hover:text-content"
             >
               Clear
-            </button>
+            </Button>
           )}
         </div>
       )}
