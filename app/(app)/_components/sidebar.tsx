@@ -6,9 +6,8 @@ import { useHouseholdStore } from "@/stores/household";
 
 const navItems = [
   { href: "/setup", label: "Setup" },
-  { href: "/scenarios", label: "Scenarios" },
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/dashboard/compare", label: "Compare" },
+  { href: "/plan", label: "Plan" },
+  { href: "/explore", label: "Explore" },
 ] as const;
 
 export function Sidebar() {
@@ -27,7 +26,7 @@ export function Sidebar() {
     <aside className="flex w-56 flex-shrink-0 flex-col border-r border-border bg-surface-elevated">
       <div className="flex h-14 items-center border-b border-border px-4">
         <Link
-          href="/dashboard"
+          href="/plan"
           className="text-base font-semibold tracking-tight text-content"
         >
           FI/RE Planner
@@ -51,6 +50,7 @@ export function Sidebar() {
           );
         })}
       </nav>
+      {pathname.startsWith("/explore") && (
       <div className="flex flex-col border-t border-border px-3 py-3">
         <span className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-content-muted">
           Scenarios
@@ -130,6 +130,7 @@ export function Sidebar() {
           })}
         </ul>
       </div>
+      )}
     </aside>
   );
 }

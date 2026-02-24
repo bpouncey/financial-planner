@@ -4,7 +4,14 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { runProjection, realReturn, runMonteCarlo } from "./engine";
+import {
+  runProjection,
+  realReturn,
+  runMonteCarlo,
+  getEffectiveHouseholdForScenario,
+  getMonthsInYear,
+  getProratedAnnualContribution,
+} from "./engine";
 import { validateHousehold } from "./validation";
 import { ContributionSchema } from "@/lib/types/zod";
 import type { Household, Scenario } from "@/lib/types/zod";
@@ -2216,6 +2223,68 @@ describe("Engine", () => {
       expect(y2030?.contributionsByAccount[invId]).toBe(0);
     });
 
+    it("startMonth/endMonth prorates contribution for partial year", () => {
+      const household = createBaseHousehold({
+        startInvested: 100_000,
+        outOfPocketInvesting: [
+          {
+            accountId: invId,
+            amountMonthly: 1000,
+            startYear: 2025,
+            endYear: 2025,
+            startMonth: 3,
+            endMonth: 10,
+          },
+        ],
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            income: { baseSalaryAnnual: 200_000, salaryGrowthRate: 0, salaryGrowthIsReal: true },
+            payroll: { payrollInvesting: [], payrollDeductionsSpending: 0 },
+          },
+        ],
+      });
+      const scenario = createBaseScenario();
+      const result = runProjection(household, scenario, 5);
+
+      const y2025 = result.yearRows.find((r) => r.year === 2025);
+      const y2026 = result.yearRows.find((r) => r.year === 2026);
+      // Mar–Oct = 8 months; 1000 * 8 = 8000
+      expect(y2025?.contributionsByAccount[invId]).toBe(8_000);
+      expect(y2026?.contributionsByAccount[invId]).toBe(0);
+    });
+
+    it("startMonth/endMonth prorates amountAnnual for partial year", () => {
+      const household = createBaseHousehold({
+        startInvested: 100_000,
+        outOfPocketInvesting: [
+          {
+            accountId: invId,
+            amountAnnual: 12_000,
+            startYear: 2025,
+            endYear: 2025,
+            startMonth: 3,
+            endMonth: 10,
+          },
+        ],
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            income: { baseSalaryAnnual: 200_000, salaryGrowthRate: 0, salaryGrowthIsReal: true },
+            payroll: { payrollInvesting: [], payrollDeductionsSpending: 0 },
+          },
+        ],
+      });
+      const scenario = createBaseScenario();
+      const result = runProjection(household, scenario, 5);
+
+      const y2025 = result.yearRows.find((r) => r.year === 2025);
+      // 8/12 * 12000 = 8000
+      expect(y2025?.contributionsByAccount[invId]).toBe(8_000);
+    });
+
     it("FI year improves with out-of-pocket vs no-contribution baseline", () => {
       const householdNoOop = createBaseHousehold({
         startInvested: 100_000,
@@ -2291,6 +2360,48 @@ describe("Engine", () => {
         accountId: "inv",
       });
       expect(result.success).toBe(false);
+    });
+    it("accepts startMonth and endMonth for partial-year proration", () => {
+      const result = ContributionSchema.safeParse({
+        accountId: "inv",
+        amountMonthly: 1000,
+        startYear: 2025,
+        endYear: 2025,
+        startMonth: 3,
+        endMonth: 10,
+      });
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("getMonthsInYear / getProratedAnnualContribution", () => {
+    it("returns 8 months for same-year startMonth=3 endMonth=10", () => {
+      const c = {
+        startYear: 2025,
+        endYear: 2025,
+        startMonth: 3,
+        endMonth: 10,
+      };
+      expect(getMonthsInYear(c, 2025)).toBe(8);
+    });
+    it("returns 10 months for first year with startMonth=3", () => {
+      const c = { startYear: 2025, endYear: 2027, startMonth: 3 };
+      expect(getMonthsInYear(c, 2025)).toBe(10);
+    });
+    it("returns 6 months for last year with endMonth=6", () => {
+      const c = { startYear: 2025, endYear: 2027, endMonth: 6 };
+      expect(getMonthsInYear(c, 2027)).toBe(6);
+    });
+    it("prorates amountMonthly correctly", () => {
+      const c = {
+        accountId: "inv",
+        amountMonthly: 1000,
+        startYear: 2025,
+        endYear: 2025,
+        startMonth: 3,
+        endMonth: 10,
+      };
+      expect(getProratedAnnualContribution(c, 2025)).toBe(8_000);
     });
   });
 
@@ -2471,6 +2582,57 @@ describe("Engine", () => {
       const firstRow = result.yearRows[0];
       // 1500 + 1200 = 2700/mo = 32_400/year
       expect(firstRow.contributionsByAccount[joint401k]).toBe(32_400);
+    });
+
+    it("contribution override on scenario changes projection (Max 401k)", () => {
+      const invId = "inv";
+      const household = createBaseHousehold({
+        startInvested: 100_000,
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            income: {
+              baseSalaryAnnual: 150_000,
+              salaryGrowthRate: 0,
+              salaryGrowthIsReal: true,
+            },
+            payroll: {
+              payrollInvesting: [{ accountId: invId, amountMonthly: 1000 }],
+              payrollDeductionsSpending: 0,
+            },
+          },
+        ],
+      });
+      const baseScenario = createBaseScenario();
+      const max401kScenario = createBaseScenario({
+        id: "max401k",
+        name: "Max 401k",
+        contributionOverrides: [
+          {
+            source: "payroll",
+            personId: "p1",
+            accountId: invId,
+            amountAnnual: 23_000,
+          },
+        ],
+      });
+
+      const baseResult = runProjection(household, baseScenario, 40);
+      const effectiveHousehold = getEffectiveHouseholdForScenario(
+        household,
+        max401kScenario
+      );
+      const maxResult = runProjection(effectiveHousehold, max401kScenario, 40);
+
+      const firstRowBase = baseResult.yearRows[0];
+      const firstRowMax = maxResult.yearRows[0];
+      expect(firstRowBase.contributionsByAccount[invId]).toBe(12_000);
+      expect(firstRowMax.contributionsByAccount[invId]).toBe(23_000);
+
+      if (baseResult.fiYear != null && maxResult.fiYear != null) {
+        expect(maxResult.fiYear).toBeLessThanOrEqual(baseResult.fiYear);
+      }
     });
 
     it("combined household income and savings improve FI year", () => {

@@ -5,7 +5,11 @@
 
 import { create } from "zustand";
 import type { Household, Scenario, Person, Account, Contribution, Event, EquityGrant, EmergencyFundGoal } from "@/lib/types/zod";
-import { runProjection, type ProjectionResult } from "@/lib/model/engine";
+import {
+  runProjection,
+  getEffectiveHouseholdForScenario,
+  type ProjectionResult,
+} from "@/lib/model/engine";
 import {
   DEFAULT_SWR,
   DEFAULT_NOMINAL_RETURN,
@@ -64,6 +68,7 @@ function createDefaultHousehold(): Household {
     ],
     accounts: [],
     scenarios: [baseScenario],
+    planScenarioId: baseScenario.id,
   });
 }
 
@@ -78,6 +83,9 @@ function computeInitialProjection(): ProjectionResult {
 export interface HouseholdState {
   household: Household;
   activeScenarioId: string | null;
+  /** FOO/plan projection using plan scenario (no overrides). */
+  planProjection: ProjectionResult | null;
+  /** Scenario projection for active scenario (what-if). */
   projection: ProjectionResult | null;
   /** Previous scenario/projection when user switches; used for What Changed panel. */
   previousScenarioId: string | null;
@@ -87,6 +95,7 @@ export interface HouseholdState {
 export interface HouseholdActions {
   setHousehold: (household: Household) => void;
   updateHousehold: (patch: Partial<Household>) => void;
+  setPlanScenarioId: (id: string | null) => void;
   setActiveScenarioId: (id: string | null) => void;
   clearScenarioComparison: () => void;
   addScenario: (scenario: Scenario) => void;
@@ -127,10 +136,19 @@ function normalizeActiveScenarioId(
   return exists ? activeScenarioId : household.scenarios[0]!.id;
 }
 
+/** Returns plan scenario id; defaults to first scenario if null or invalid. */
+function getPlanScenarioId(household: Household): string | null {
+  if (!household.scenarios.length) return null;
+  const id = household.planScenarioId ?? household.scenarios[0]!.id;
+  const exists = household.scenarios.some((s) => s.id === id);
+  return exists ? id : household.scenarios[0]!.id;
+}
+
 export const useHouseholdStore = create<HouseholdState & HouseholdActions>()(
   (set, get) => ({
     household: createDefaultHousehold(),
     activeScenarioId: "base",
+    planProjection: computeInitialProjection(),
     projection: computeInitialProjection(),
     previousScenarioId: null,
     previousProjection: null,
@@ -138,11 +156,26 @@ export const useHouseholdStore = create<HouseholdState & HouseholdActions>()(
     setHousehold: (household) => {
       const { activeScenarioId } = get();
       const normalized = normalizeActiveScenarioId(household, activeScenarioId);
+      const planId = getPlanScenarioId(household);
+      const householdWithPlan = household.planScenarioId != null
+        ? household
+        : { ...household, planScenarioId: planId };
       set({
-        household,
+        household: householdWithPlan,
         activeScenarioId: normalized,
+        planProjection: null,
         projection: null,
       });
+      get().recomputeProjection();
+    },
+
+    setPlanScenarioId: (id) => {
+      const { household } = get();
+      if (id != null && !household.scenarios.some((s) => s.id === id)) return;
+      set((state) => ({
+        household: { ...state.household, planScenarioId: id ?? null },
+        planProjection: null,
+      }));
       get().recomputeProjection();
     },
 
@@ -156,6 +189,7 @@ export const useHouseholdStore = create<HouseholdState & HouseholdActions>()(
         return {
           household: nextHousehold,
           activeScenarioId: normalized,
+          planProjection: null,
           projection: null,
         };
       });
@@ -387,13 +421,18 @@ export const useHouseholdStore = create<HouseholdState & HouseholdActions>()(
 
     recomputeProjection: () => {
       const { household, activeScenarioId } = get();
-      const scenario = getActiveScenario(household, activeScenarioId);
-      if (!scenario) {
-        set({ projection: null });
-        return;
-      }
-      const projection = runProjection(household, scenario);
-      set({ projection });
+      const planScenario = getActiveScenario(household, getPlanScenarioId(household));
+      const activeScenario = getActiveScenario(household, activeScenarioId);
+      const planProjection = planScenario
+        ? runProjection(household, planScenario)
+        : null;
+      const projection = activeScenario
+        ? runProjection(
+            getEffectiveHouseholdForScenario(household, activeScenario),
+            activeScenario
+          )
+        : null;
+      set({ planProjection, projection });
     },
   })
 );

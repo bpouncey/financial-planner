@@ -12,6 +12,7 @@ const HOUSEHOLD_KEY = "default";
 export interface PersistedHousehold {
   household: Household;
   activeScenarioId: string | null;
+  planScenarioId: string | null;
 }
 
 export async function loadHousehold(): Promise<PersistedHousehold | null> {
@@ -20,7 +21,7 @@ export async function loadHousehold(): Promise<PersistedHousehold | null> {
 
   const { data, error } = await supabase
     .from("households")
-    .select("data, active_scenario_id")
+    .select("data, active_scenario_id, plan_scenario_id")
     .eq("id", HOUSEHOLD_KEY)
     .single();
 
@@ -41,19 +42,24 @@ export async function loadHousehold(): Promise<PersistedHousehold | null> {
     console.error("[Supabase] Invalid household data:", parsed.error);
     return null;
   }
+  const household = parsed.data;
+  const planScenarioId = data.plan_scenario_id ?? household.planScenarioId ?? household.scenarios[0]?.id ?? null;
   return {
-    household: parsed.data,
+    household: { ...household, planScenarioId },
     activeScenarioId: data.active_scenario_id ?? null,
+    planScenarioId,
   };
 }
 
 export async function saveHousehold(
   household: Household,
-  activeScenarioId: string | null
+  activeScenarioId: string | null,
+  planScenarioId?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
   const supabase = getSupabase();
   if (!supabase) return { ok: false, error: "Supabase not configured" };
 
+  const planId = planScenarioId ?? household.planScenarioId ?? household.scenarios[0]?.id ?? null;
   const { error } = await supabase
     .from("households")
     .upsert(
@@ -61,6 +67,7 @@ export async function saveHousehold(
         id: HOUSEHOLD_KEY,
         data: household,
         active_scenario_id: activeScenarioId,
+        plan_scenario_id: planId,
       },
       { onConflict: "id" }
     );

@@ -48,6 +48,8 @@ This file defines the shape of objects stored in local persistence (v1: localSto
 - `amountAnnual` (number) OR `amountMonthly` (number)
 - `startYear` (number, optional)
 - `endYear` (number, optional)
+- `startMonth` (number 1–12, optional) — first month of contribution in startYear; enables partial-year proration
+- `endMonth` (number 1–12, optional) — last month of contribution in endYear
 
 ### EmployerMatchModel (v1 simple)
 - `matchPercent` (e.g., 0.05 for 5% match)
@@ -86,6 +88,18 @@ This file defines the shape of objects stored in local persistence (v1: localSto
 - `salaryGrowthOverride` (number | null)
 - `includeEmployerMatch` (boolean)
 - `equityPolicy` (EquityPolicy)
+- `contributionOverrides` (ContributionOverride[], optional) — scenario-only overrides for contribution amounts (e.g. "Max 401k: $23,000")
+- `eventOverrides` (Event[], optional) — scenario-only events that apply only when this scenario is active (e.g. "Jillian RSU vest 2027")
+
+### ContributionOverride
+- `source` (enum): payroll | outOfPocket | monthlySavings
+- `personId` (string, required when source is payroll)
+- `accountId` (string)
+- `amountAnnual` OR `amountMonthly` OR `percentOfIncome` (same as Contribution)
+- `startYear` (number, optional)
+- `endYear` (number, optional)
+- `startMonth` (number 1–12, optional)
+- `endMonth` (number 1–12, optional)
 
 ### EquityPolicy
 - `defaultWithholdingRate` (number)

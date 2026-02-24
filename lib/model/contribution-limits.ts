@@ -9,6 +9,10 @@
 
 import type { Household, Scenario, Contribution, Person } from "@/lib/types/zod";
 import type { AccountType } from "@/lib/types/zod";
+import {
+  getMonthsInYear,
+  getProratedAnnualContribution,
+} from "@/lib/model/engine";
 
 /** IRS limits by year. 401k/403b, IRA, HSA family. */
 const LIMITS_BY_YEAR: Record<
@@ -58,13 +62,6 @@ export const LIMITED_ACCOUNT_TYPES: AccountType[] = [
   "HSA",
 ];
 
-function toAnnual(c: Contribution): number {
-  if (c.percentOfIncome != null) return 0;
-  if (c.amountAnnual != null) return c.amountAnnual;
-  if (c.amountMonthly != null) return c.amountMonthly * 12;
-  return 0;
-}
-
 function appliesInYear(c: Contribution, year: number): boolean {
   const start = c.startYear ?? -Infinity;
   const end = c.endYear ?? Infinity;
@@ -110,23 +107,24 @@ export function getContributionsByAccount(
   for (const person of people) {
     for (const c of person.payroll.payrollInvesting ?? []) {
       if (!appliesInYear(c, year)) continue;
+      const months = getMonthsInYear(c, year);
       const amt =
         c.percentOfIncome != null
-          ? getPersonGrossIncome(person, year) * (c.percentOfIncome / 100)
-          : toAnnual(c);
+          ? getPersonGrossIncome(person, year) * (c.percentOfIncome / 100) * (months / 12)
+          : getProratedAnnualContribution(c, year);
       out[c.accountId] = (out[c.accountId] ?? 0) + amt;
     }
   }
 
   for (const c of household.outOfPocketInvesting ?? []) {
     if (!appliesInYear(c, year)) continue;
-    const amt = toAnnual(c);
+    const amt = getProratedAnnualContribution(c, year);
     out[c.accountId] = (out[c.accountId] ?? 0) + amt;
   }
 
   for (const c of household.monthlySavings ?? []) {
     if (!appliesInYear(c, year)) continue;
-    const amt = toAnnual(c);
+    const amt = getProratedAnnualContribution(c, year);
     out[c.accountId] = (out[c.accountId] ?? 0) + amt;
   }
 

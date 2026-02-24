@@ -20,32 +20,37 @@ function getRetirementYear(
 }
 
 export function RoadmapTimeline() {
-  const { household, activeScenarioId, projection } = useHouseholdStore();
+  const { household, planProjection } = useHouseholdStore();
 
-  const scenario =
-    household.scenarios.find((s) => s.id === activeScenarioId) ??
-    household.scenarios[0] ?? null;
+  const planScenarioId =
+    household.planScenarioId ?? household.scenarios[0]?.id ?? null;
+  const planScenario =
+    planScenarioId != null
+      ? household.scenarios.find((s) => s.id === planScenarioId) ??
+        household.scenarios[0] ??
+        null
+      : null;
 
   const { markers, startYear, endYear } = useMemo(() => {
-    if (!projection?.yearRows.length || !scenario) {
+    if (!planProjection?.yearRows.length || !planScenario) {
       return { markers: [] as TimelineMarker[], startYear: 0, endYear: 0 };
     }
 
-    const rows = projection.yearRows;
+    const rows = planProjection.yearRows;
     const start = rows[0]!.year;
     const end = rows[rows.length - 1]!.year;
     const markers: TimelineMarker[] = [];
 
-    if (projection.fiYear != null && projection.fiYear >= start && projection.fiYear <= end) {
-      markers.push({ year: projection.fiYear, label: "FI", variant: "fi" });
+    if (planProjection.fiYear != null && planProjection.fiYear >= start && planProjection.fiYear <= end) {
+      markers.push({ year: planProjection.fiYear, label: "FI", variant: "fi" });
     }
     if (
-      projection.coastFiYear != null &&
-      projection.coastFiYear >= start &&
-      projection.coastFiYear <= end
+      planProjection.coastFiYear != null &&
+      planProjection.coastFiYear >= start &&
+      planProjection.coastFiYear <= end
     ) {
       markers.push({
-        year: projection.coastFiYear,
+        year: planProjection.coastFiYear,
         label: "Coast FI",
         variant: "coast-fi",
       });
@@ -53,13 +58,13 @@ export function RoadmapTimeline() {
 
     const retirementYear = getRetirementYear(
       household.people,
-      scenario.retirementAgeTarget
+      planScenario.retirementAgeTarget
     );
     if (
       retirementYear != null &&
       retirementYear >= start &&
       retirementYear <= end &&
-      retirementYear !== projection.fiYear
+      retirementYear !== planProjection.fiYear
     ) {
       markers.push({
         year: retirementYear,
@@ -81,9 +86,9 @@ export function RoadmapTimeline() {
 
     markers.sort((a, b) => a.year - b.year);
     return { markers, startYear: start, endYear: end };
-  }, [projection, household, scenario]);
+  }, [planProjection, household, planScenario]);
 
-  if (!projection?.yearRows.length) return null;
+  if (!planProjection?.yearRows.length) return null;
 
   const hasMarkers = markers.length > 0;
 

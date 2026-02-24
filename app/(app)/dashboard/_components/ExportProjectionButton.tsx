@@ -1,20 +1,31 @@
 "use client";
 
 import { useHouseholdStore } from "@/stores/household";
+import { usePlanView } from "@/app/(app)/_components/PlanViewContext";
 import { downloadProjectionCsv } from "@/lib/utils/export-projection";
 
 export function ExportProjectionButton() {
-  const { projection, household, activeScenarioId } = useHouseholdStore();
+  const { projection, planProjection, household, activeScenarioId } =
+    useHouseholdStore();
+  const usePlanViewMode = usePlanView();
 
+  const planScenarioId =
+    household.planScenarioId ?? household.scenarios[0]?.id ?? null;
+  const planScenario =
+    planScenarioId != null
+      ? household.scenarios.find((s) => s.id === planScenarioId) ??
+        household.scenarios[0] ??
+        null
+      : null;
   const scenario =
-    household.scenarios.find((s) => s.id === activeScenarioId) ??
-    household.scenarios[0] ?? null;
+    usePlanViewMode ? planScenario : household.scenarios.find((s) => s.id === activeScenarioId) ?? household.scenarios[0] ?? null;
+  const projectionToUse = usePlanViewMode ? planProjection : projection;
   const scenarioName = scenario?.name ?? "projection";
-  const disabled = !projection?.yearRows?.length;
+  const disabled = !projectionToUse?.yearRows?.length;
 
   function handleExport() {
-    if (!projection?.yearRows?.length) return;
-    downloadProjectionCsv(projection, household, { scenarioName });
+    if (!projectionToUse?.yearRows?.length) return;
+    downloadProjectionCsv(projectionToUse, household, { scenarioName });
   }
 
   return (

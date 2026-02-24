@@ -31,18 +31,23 @@ function getEmergencyFundFundedYear(
 }
 
 export function PrimaryMetricsPanel() {
-  const { household, activeScenarioId, projection } = useHouseholdStore();
+  const { household, planProjection } = useHouseholdStore();
 
-  const scenario =
-    household.scenarios.find((s) => s.id === activeScenarioId) ??
-    household.scenarios[0] ?? null;
+  const planScenarioId =
+    household.planScenarioId ?? household.scenarios[0]?.id ?? null;
+  const planScenario =
+    planScenarioId != null
+      ? household.scenarios.find((s) => s.id === planScenarioId) ??
+        household.scenarios[0] ??
+        null
+      : null;
 
   const monteCarloResult = useMemo(() => {
-    if (!scenario || !projection) return null;
-    return runMonteCarlo(household, scenario, 100, 50);
-  }, [household, scenario, projection]);
+    if (!planScenario || !planProjection) return null;
+    return runMonteCarlo(household, planScenario, 100, 50);
+  }, [household, planScenario, planProjection]);
 
-  if (!projection) {
+  if (!planProjection) {
     return (
       <div className="rounded-lg border border-border bg-surface-elevated p-6">
         <p className="text-sm text-content-muted">
@@ -52,7 +57,7 @@ export function PrimaryMetricsPanel() {
     );
   }
 
-  const { fiNumber, fiYear, coastFiYear, savingsRate } = projection;
+  const { fiNumber, fiYear, coastFiYear, savingsRate } = planProjection;
   const currency = household.currency ?? "USD";
 
   const monteCarloValue =
@@ -77,7 +82,7 @@ export function PrimaryMetricsPanel() {
     emergencyFundGoal?.targetAmount &&
     emergencyFundGoal?.accountId &&
     getEmergencyFundFundedYear(
-      projection,
+      planProjection,
       emergencyFundGoal.accountId,
       emergencyFundGoal.targetAmount
     );

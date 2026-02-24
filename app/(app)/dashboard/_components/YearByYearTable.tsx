@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useHouseholdStore } from "@/stores/household";
+import { usePlanView } from "@/app/(app)/_components/PlanViewContext";
 import type { YearRow } from "@/lib/model/engine";
 import type { Account } from "@/lib/types/zod";
 import { formatCurrency } from "@/lib/utils/format";
@@ -91,7 +92,9 @@ function getAccountColVisibility(
 type ViewMode = "overview" | "full";
 
 export function YearByYearTable() {
-  const { projection, household } = useHouseholdStore();
+  const { projection, planProjection, household } = useHouseholdStore();
+  const usePlanViewMode = usePlanView();
+  const projectionToUse = usePlanViewMode ? planProjection : projection;
   const [hideZeroColumns, setHideZeroColumns] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("full");
   const [colVisibility, setColVisibility] = useState<ColumnVisibility>({
@@ -134,16 +137,16 @@ export function YearByYearTable() {
   const accounts: Account[] = household.accounts;
   const people = household.people;
   const allYearRows = useMemo<YearRow[]>(
-    () => projection?.yearRows ?? [],
-    [projection?.yearRows]
+    () => projectionToUse?.yearRows ?? [],
+    [projectionToUse?.yearRows]
   );
-  const fiYear = projection?.fiYear ?? null;
-  const coastFiYear = projection?.coastFiYear ?? null;
+  const fiYear = projectionToUse?.fiYear ?? null;
+  const coastFiYear = projectionToUse?.coastFiYear ?? null;
   const emergencyFundGoal = household.emergencyFundGoal;
   const emergencyFundFundedYear =
     emergencyFundGoal?.targetAmount &&
     emergencyFundGoal?.accountId &&
-    (projection?.yearRows.find(
+    (projectionToUse?.yearRows.find(
       (r) =>
         (r.endingBalances[emergencyFundGoal.accountId!] ?? 0) >=
         emergencyFundGoal.targetAmount
@@ -216,7 +219,7 @@ export function YearByYearTable() {
     };
   }, [hasTwoRowHeader]);
 
-  if (!projection?.yearRows?.length) {
+  if (!projectionToUse?.yearRows?.length) {
     return (
       <div className="rounded-lg border border-border bg-surface-elevated p-8 text-center">
         <p className="text-sm text-content-muted">

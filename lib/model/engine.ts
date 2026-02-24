@@ -7,6 +7,7 @@ import type {
   Household,
   Scenario,
   Contribution,
+  ContributionOverride,
   PriceAssumption,
   Account,
   Person,
@@ -15,6 +16,33 @@ import {
   PENALTY_FREE_AGE_TRADITIONAL,
   PENALTY_FREE_AGE_HSA,
 } from "@/lib/model/constants";
+
+/** Contribution-like shape with optional month bounds (Contribution or ContributionOverride). */
+type ContributionLike = Pick<
+  Contribution,
+  "startYear" | "endYear" | "startMonth" | "endMonth" | "amountAnnual" | "amountMonthly" | "percentOfIncome"
+>;
+
+/** Number of months a contribution applies in a given year (0–12). Handles partial-year via startMonth/endMonth. */
+export function getMonthsInYear(c: ContributionLike, year: number): number {
+  const start = c.startYear ?? -Infinity;
+  const end = c.endYear ?? Infinity;
+  if (year < start || year > end) return 0;
+
+  const startMonth = c.startMonth ?? 1;
+  const endMonth = c.endMonth ?? 12;
+
+  if (start === end) {
+    return Math.max(0, endMonth - startMonth + 1);
+  }
+  if (year === start) {
+    return 13 - startMonth;
+  }
+  if (year === end) {
+    return endMonth;
+  }
+  return 12;
+}
 
 /** Normalize contribution to annual amount (fixed amounts only; use percent path for percentOfIncome). */
 function toAnnual(c: Contribution): number {
@@ -29,6 +57,20 @@ function appliesInYear(c: Contribution, year: number): boolean {
   const start = c.startYear ?? -Infinity;
   const end = c.endYear ?? Infinity;
   return year >= start && year <= end;
+}
+
+/**
+ * Get prorated annual contribution for a year. For partial-year (startMonth/endMonth),
+ * returns amountMonthly * months or amountAnnual * (months/12). For percentOfIncome, returns 0 (caller prorates).
+ */
+export function getProratedAnnualContribution(c: Contribution, year: number): number {
+  if (c.percentOfIncome != null) return 0;
+  const months = getMonthsInYear(c, year);
+  if (months <= 0) return 0;
+  if (months >= 12) return toAnnual(c);
+  if (c.amountMonthly != null) return c.amountMonthly * months;
+  if (c.amountAnnual != null) return c.amountAnnual * (months / 12);
+  return 0;
 }
 
 /** Get share price for a grant in a given year from price assumption */
@@ -146,6 +188,96 @@ export function realReturn(nominal: number, inflation: number): number {
   return (1 + nominal) / (1 + inflation) - 1;
 }
 
+/** Convert ContributionOverride to Contribution shape (drop source, personId). */
+function overrideToContribution(o: ContributionOverride): Contribution {
+  return {
+    accountId: o.accountId,
+    amountAnnual: o.amountAnnual,
+    amountMonthly: o.amountMonthly,
+    percentOfIncome: o.percentOfIncome,
+    startYear: o.startYear,
+    endYear: o.endYear,
+    startMonth: o.startMonth,
+    endMonth: o.endMonth,
+  };
+}
+
+/**
+ * Apply scenario contribution overrides to household.
+ * Returns a merged household for scenario projection only (not plan projection).
+ */
+export function getEffectiveHouseholdForScenario(
+  household: Household,
+  scenario: Scenario
+): Household {
+  const overrides = scenario.contributionOverrides ?? [];
+  if (overrides.length === 0) return household;
+
+  const people = household.people.map((person) => {
+    const payrollOverrides = overrides.filter(
+      (o) => o.source === "payroll" && o.personId === person.id
+    );
+    if (payrollOverrides.length === 0)
+      return person;
+
+    const base = person.payroll.payrollInvesting ?? [];
+    const byAccountId = new Map<string, Contribution>();
+    for (const c of base) {
+      byAccountId.set(c.accountId, c);
+    }
+    for (const o of payrollOverrides) {
+      byAccountId.set(o.accountId, overrideToContribution(o));
+    }
+    const merged = Array.from(byAccountId.values());
+    return {
+      ...person,
+      payroll: {
+        ...person.payroll,
+        payrollInvesting: merged,
+      },
+    };
+  });
+
+  const oopOverrides = overrides.filter((o) => o.source === "outOfPocket");
+  const oopBase = household.outOfPocketInvesting ?? [];
+  const oopByAccountId = new Map<string, Contribution>();
+  for (const c of oopBase) {
+    oopByAccountId.set(c.accountId, c);
+  }
+  for (const o of oopOverrides) {
+    oopByAccountId.set(o.accountId, overrideToContribution(o));
+  }
+  const outOfPocketInvesting = Array.from(oopByAccountId.values());
+
+  const savingsOverrides = overrides.filter((o) => o.source === "monthlySavings");
+  const savingsBase = household.monthlySavings ?? [];
+  const savingsByAccountId = new Map<string, Contribution>();
+  for (const c of savingsBase) {
+    savingsByAccountId.set(c.accountId, c);
+  }
+  for (const o of savingsOverrides) {
+    savingsByAccountId.set(o.accountId, overrideToContribution(o));
+  }
+  const monthlySavings = Array.from(savingsByAccountId.values());
+
+  // Merge household events with scenario-specific events (both applied in year order)
+  const eventOverrides = scenario.eventOverrides ?? [];
+  const effectiveEvents =
+    eventOverrides.length === 0
+      ? household.events ?? []
+      : [...(household.events ?? []), ...eventOverrides].sort(
+          (a, b) => a.year - b.year
+        );
+
+  return {
+    ...household,
+    people,
+    outOfPocketInvesting,
+    monthlySavings,
+    events: effectiveEvents,
+  };
+}
+
 /** Options for runProjection (internal use for Monte Carlo). */
 export interface ProjectionOptions {
   /** Override return rate per year index; when set, used instead of scenario rate. */
@@ -200,10 +332,11 @@ export function runProjection(
     for (const person of people) {
       for (const c of person.payroll.payrollInvesting) {
         if (!appliesInYear(c, year)) continue;
+        const months = getMonthsInYear(c, year);
         const amt =
           c.percentOfIncome != null
-            ? getPersonGrossIncome(person, year) * (c.percentOfIncome / 100)
-            : toAnnual(c);
+            ? getPersonGrossIncome(person, year) * (c.percentOfIncome / 100) * (months / 12)
+            : getProratedAnnualContribution(c, year);
         out[c.accountId] = (out[c.accountId] ?? 0) + amt;
       }
     }
@@ -215,7 +348,7 @@ export function runProjection(
     const out: Record<string, number> = {};
     for (const c of household.outOfPocketInvesting ?? []) {
       if (!appliesInYear(c, year)) continue;
-      const amt = toAnnual(c);
+      const amt = getProratedAnnualContribution(c, year);
       out[c.accountId] = (out[c.accountId] ?? 0) + amt;
     }
     return out;
@@ -226,7 +359,7 @@ export function runProjection(
     const out: Record<string, number> = {};
     for (const c of household.monthlySavings ?? []) {
       if (!appliesInYear(c, year)) continue;
-      const amt = toAnnual(c);
+      const amt = getProratedAnnualContribution(c, year);
       out[c.accountId] = (out[c.accountId] ?? 0) + amt;
     }
     return out;

@@ -28,7 +28,8 @@ export function SupabaseHydration() {
       if (saveTimeout.current) clearTimeout(saveTimeout.current);
       saveTimeout.current = setTimeout(() => {
         saveTimeout.current = null;
-        saveHousehold(state.household, state.activeScenarioId);
+        const planId = state.household.planScenarioId ?? state.household.scenarios[0]?.id ?? null;
+        saveHousehold(state.household, state.activeScenarioId, planId);
       }, SAVE_DEBOUNCE_MS);
     });
     return () => {

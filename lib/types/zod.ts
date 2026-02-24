@@ -72,6 +72,8 @@ export const ContributionSchema = z
     percentOfIncome: z.number().min(0).max(100).optional(),
     startYear: z.number().optional(),
     endYear: z.number().optional(),
+    startMonth: z.number().min(1).max(12).optional(),
+    endMonth: z.number().min(1).max(12).optional(),
   })
   .refine(
     (c) =>
@@ -80,6 +82,32 @@ export const ContributionSchema = z
     { message: "Use either fixed amount OR percentOfIncome, not both." }
   );
 export type Contribution = z.infer<typeof ContributionSchema>;
+
+/** Scenario-level override for a contribution. Matches by source + personId (payroll) + accountId. */
+export const ContributionOverrideSchema = z
+  .object({
+    source: z.enum(["payroll", "outOfPocket", "monthlySavings"]),
+    personId: z.string().optional(), // required when source is payroll
+    accountId: z.string(),
+    amountAnnual: z.number().optional(),
+    amountMonthly: z.number().optional(),
+    percentOfIncome: z.number().min(0).max(100).optional(),
+    startYear: z.number().optional(),
+    endYear: z.number().optional(),
+    startMonth: z.number().min(1).max(12).optional(),
+    endMonth: z.number().min(1).max(12).optional(),
+  })
+  .refine(
+    (c) =>
+      (c.amountAnnual != null || c.amountMonthly != null) !==
+      (c.percentOfIncome != null),
+    { message: "Use either fixed amount OR percentOfIncome, not both." }
+  )
+  .refine(
+    (c) => c.source !== "payroll" || c.personId != null,
+    { message: "personId is required when source is payroll." }
+  );
+export type ContributionOverride = z.infer<typeof ContributionOverrideSchema>;
 
 export const IncomeModelSchema = z.object({
   baseSalaryAnnual: z.number(),
@@ -156,6 +184,8 @@ export const ScenarioSchema = z.object({
     .default(["TAXABLE", "MONEY_MARKET", "TRADITIONAL", "403B", "ROTH"]),
   stressTestFirstYearReturn: z.number().nullable().optional(),
   retirementEffectiveTaxRate: z.number().min(0).max(1).optional(),
+  contributionOverrides: z.array(ContributionOverrideSchema).optional().default([]),
+  eventOverrides: z.array(EventSchema).optional().default([]),
 });
 export type Scenario = z.infer<typeof ScenarioSchema>;
 
@@ -180,5 +210,7 @@ export const HouseholdSchema = z.object({
   events: z.array(EventSchema).default([]),
   equityGrants: z.array(EquityGrantSchema).default([]),
   emergencyFundGoal: EmergencyFundGoalSchema.optional(),
+  /** Scenario used for FOO/plan projection; defaults to first scenario. */
+  planScenarioId: z.string().nullable().optional(),
 });
 export type Household = z.infer<typeof HouseholdSchema>;

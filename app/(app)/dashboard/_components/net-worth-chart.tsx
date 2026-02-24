@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { useHouseholdStore } from "@/stores/household";
+import { usePlanView } from "@/app/(app)/_components/PlanViewContext";
 import type { AccountType } from "@/lib/types/zod";
 
 const ACCOUNT_TYPE_ORDER: AccountType[] = [
@@ -54,9 +55,11 @@ function formatCurrency(value: number): string {
 }
 
 export function NetWorthChart() {
-  const { household, projection } = useHouseholdStore();
+  const { household, projection, planProjection } = useHouseholdStore();
+  const usePlanViewMode = usePlanView();
+  const projectionToUse = usePlanViewMode ? planProjection : projection;
 
-  if (!projection || !projection.yearRows.length) {
+  if (!projectionToUse || !projectionToUse.yearRows.length) {
     return (
       <div className="flex h-64 items-center justify-center rounded-lg border border-border bg-surface-elevated">
         <p className="text-sm text-content-muted">
@@ -72,7 +75,7 @@ export function NetWorthChart() {
     household.accounts.some((a) => a.type === t)
   );
 
-  const chartData = projection.yearRows.map((row) => {
+  const chartData = projectionToUse.yearRows.map((row) => {
     const byType: Record<string, number> = {};
     for (const type of typeOrder) {
       byType[type] = 0;

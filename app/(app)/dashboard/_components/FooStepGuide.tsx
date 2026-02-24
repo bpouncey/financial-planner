@@ -213,26 +213,34 @@ function StatusBadge({ status }: { status: StepStatus }) {
 
 export function FooStepGuide() {
   const [expandedStep, setExpandedStep] = useState<number | null>(1);
-  const { household, activeScenarioId, projection } = useHouseholdStore();
+  const { household, planProjection } = useHouseholdStore();
 
-  const scenario =
-    household.scenarios.find((s) => s.id === activeScenarioId) ??
-    household.scenarios[0] ??
-    null;
+  const planScenarioId =
+    household.planScenarioId ?? household.scenarios[0]?.id ?? null;
+  const planScenario =
+    planScenarioId != null
+      ? household.scenarios.find((s) => s.id === planScenarioId) ??
+        household.scenarios[0] ??
+        null
+      : null;
 
   const stepsWithStatus = useMemo(
     () =>
       FOO_STEPS.map((s) => ({
         ...s,
-        status: s.getStatus({ household, scenario, projection }),
+        status: s.getStatus({
+          household,
+          scenario: planScenario,
+          projection: planProjection,
+        }),
       })),
-    [household, scenario, projection]
+    [household, planScenario, planProjection]
   );
 
   const completeCount = stepsWithStatus.filter(
     (s) => s.status === "complete"
   ).length;
-  const savingsRate = projection?.savingsRate ?? 0;
+  const savingsRate = planProjection?.savingsRate ?? 0;
   const isFinancialMutant = savingsRate >= 0.25;
 
   return (
@@ -251,7 +259,7 @@ export function FooStepGuide() {
           <span className="text-sm text-content-muted">
             {completeCount} of 9 steps
           </span>
-          {projection && (
+          {planProjection && (
             <span
               className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                 isFinancialMutant
