@@ -290,11 +290,41 @@ describe("Engine", () => {
       const hasOverflowWarning = result.validation.warnings.some(
         (w) => w.code === "AUTO_OVERFLOW_ROUTING_ENABLED"
       );
-      // May or may not trigger depending on exact numbers; just ensure no CASHFLOW_NOT_RECONCILED
+      // May or may not trigger depending on exact numbers; just ensure no reconciliation error
       const hasReconcileError = result.validation.errors.some(
-        (e) => e.code === "CASHFLOW_NOT_RECONCILED"
+        (e) =>
+          e.code === "CASHFLOW_NOT_RECONCILED" ||
+          e.code === "CASHFLOW_RECONCILIATION_BREAKDOWN"
       );
       expect(hasReconcileError).toBe(false);
+    });
+
+    it("CASHFLOW_RECONCILIATION_BREAKDOWN includes breakdown when reconciliation fails", () => {
+      const household = createBaseHousehold({
+        accounts: [
+          { id: "inv", name: "401k", type: "TRADITIONAL_401K", owner: "PERSON_A", startingBalance: 0, includedInFIAssets: true },
+          { id: "tax", name: "Taxable", type: "TAXABLE", owner: "PERSON_A", startingBalance: 0, includedInFIAssets: true },
+        ],
+      });
+      const scenario = createBaseScenario({
+        takeHomeDefinition: "OVERRIDE",
+        netToCheckingOverride: 300_000,
+        currentMonthlySpend: 1000,
+        enableUnallocatedSurplusBalancing: false,
+        autoFixOverflow: false,
+      });
+      const result = runProjection(household, scenario, 3);
+      const reconcileError = result.validation.errors.find(
+        (e) => e.code === "CASHFLOW_RECONCILIATION_BREAKDOWN"
+      );
+      if (reconcileError) {
+        expect(reconcileError).toHaveProperty("breakdown");
+        const b = (reconcileError as { breakdown?: { year: number; phase: string; delta: number } }).breakdown;
+        expect(b).toBeDefined();
+        expect(b!.year).toBeGreaterThanOrEqual(2025);
+        expect(["accumulation", "withdrawal"]).toContain(b!.phase);
+        expect(typeof b!.delta).toBe("number");
+      }
     });
   });
 

@@ -367,8 +367,30 @@ export interface ValidationAssumption {
   message: string;
 }
 
+/** Structured breakdown when cashflow reconciliation fails. */
+export interface ReconciliationBreakdown {
+  year: number;
+  phase: "accumulation" | "withdrawal";
+  /** Sources: net income + other inflows (RSU, events, or withdrawals). */
+  netIncome: number;
+  otherInflows: number;
+  /** Uses: spending, contributions, taxes. */
+  spending: number;
+  contributions: number;
+  taxes: number;
+  unallocatedSurplus: number;
+  /** Sources - Uses; non-zero indicates model bug. */
+  delta: number;
+}
+
+export interface ValidationErrorWithBreakdown {
+  code: string;
+  message: string;
+  breakdown?: ReconciliationBreakdown;
+}
+
 export interface ProjectionValidation {
-  errors: Array<{ code: string; message: string }>;
+  errors: Array<ValidationErrorWithBreakdown>;
   warnings: Array<{ code: string; message: string }>;
   assumptions: ValidationAssumption[];
 }
@@ -640,7 +662,7 @@ export function runProjection(
   const currentAnnualSpend = currentMonthlySpend * 12 + payrollDeductions;
 
   const yearRows: YearRow[] = [];
-  const validationErrors: Array<{ code: string; message: string }> = [];
+  const validationErrors: Array<ValidationErrorWithBreakdown> = [];
   const validationWarnings: Array<{ code: string; message: string }> = [];
   const validationAssumptions: ValidationAssumption[] = [];
 
@@ -734,6 +756,10 @@ export function runProjection(
     let rowWithdrawalsTaxable: number | undefined;
     let rowWithdrawalTaxes: number | undefined;
     let rowUnallocatedSurplus: number | undefined;
+    /** For CASHFLOW_RECONCILIATION_BREAKDOWN when delta != 0 */
+    let breakdownNetIncome = 0;
+    let breakdownOtherInflows = 0;
+    let breakdownContributions = 0;
 
     if (inWithdrawal) {
       // Withdrawal phase: no income, withdraw from accounts to fund spending
@@ -860,6 +886,9 @@ export function runProjection(
       // Withdrawal phase reconciliation: otherNetInflows = totalWithdrawn; cashSavingsChange = 0
       const otherNetInflows = totalWithdrawn;
       const cashSavingsChange = 0;
+      breakdownNetIncome = 0;
+      breakdownOtherInflows = totalWithdrawn;
+      breakdownContributions = 0;
       reconciliationDelta =
         0 +
         otherNetInflows -
@@ -958,6 +987,9 @@ export function runProjection(
       const rsuNetTotal = rsuBreakdown.netProceeds;
       const otherNetInflows = rsuNetTotal + eventInflows;
       const afterTaxContribs = totalOopContrib + totalSavingsContrib;
+      breakdownNetIncome = netToChecking;
+      breakdownOtherInflows = otherNetInflows;
+      breakdownContributions = afterTaxContribs;
       const cashSavingsChange =
         netCashSurplus + rsuNetTotal + eventInflows - eventOutflows;
       reconciliationDelta =
@@ -1097,9 +1129,21 @@ export function runProjection(
       if (
         Math.abs(reconciliationDelta) > RECONCILIATION_ROUNDING_THRESHOLD
       ) {
+        const breakdown: ReconciliationBreakdown = {
+          year,
+          phase,
+          netIncome: breakdownNetIncome,
+          otherInflows: breakdownOtherInflows,
+          spending,
+          contributions: breakdownContributions,
+          taxes: (rowTaxesPayroll ?? 0) + (rowTaxesAdditional ?? 0) + (rowWithdrawalTaxes ?? 0),
+          unallocatedSurplus: rowUnallocatedSurplus ?? 0,
+          delta: reconciliationDelta,
+        };
         validationErrors.push({
-          code: "CASHFLOW_NOT_RECONCILED",
-          message: `Cashflow doesn't reconcile in year ${year} by $${Math.abs(reconciliationDelta).toFixed(2)} (delta: ${reconciliationDelta >= 0 ? "+" : ""}$${reconciliationDelta.toFixed(2)}). Check for double-counting or missing flows.`,
+          code: "CASHFLOW_RECONCILIATION_BREAKDOWN",
+          message: `Cashflow doesn't reconcile in year ${year}: delta = $${reconciliationDelta >= 0 ? "+" : ""}${reconciliationDelta.toFixed(2)}. Suggested fixes: Enable Unallocated Surplus balancing, add a CHECKING account for NET_TO_CHECKING, or check withdrawal tax funding.`,
+          breakdown,
         });
       }
     }

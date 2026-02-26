@@ -17,6 +17,10 @@ Required fields:
 - rsuVestValue, rsuWithholding, rsuNetProceeds
 - withdrawalsTraditional, withdrawalsRoth, withdrawalsTaxable
 - withdrawalTaxes
+- withdrawalsTraditionalGross (gross amount withdrawn from traditional; equals withdrawalsTraditional when gross-up is used)
+- withdrawalTaxesPaid (taxes on withdrawals; equals withdrawalTaxes)
+- unallocatedSurplus (accumulation-phase balancing sink; 0 when disabled)
+- bucketUsedTaxable, bucketUsedTaxDeferred, bucketUsedRoth (1 if that bucket had withdrawals, 0 otherwise)
 - portfolioStart, portfolioGrowth, portfolioEnd
 - reconciliationDelta
 
@@ -28,9 +32,12 @@ Return alongside results:
 
 ## Blocking errors (minimum set)
 - CASHFLOW_NOT_RECONCILED: reconciliationDelta != 0 (beyond rounding threshold)
+- CASHFLOW_RECONCILIATION_BREAKDOWN: when reconciliationDelta != 0, includes period, net income, contributions, spending, taxes, unallocated surplus
 - INPUT_DEFINITION_CONFLICT: takeHomeDefinition conflicts with provided inputs
 - EMPLOYER_MATCH_DISABLED_BUT_PRESENT: includeEmployerMatch=false but contribEmployer > 0
 - RETIREMENT_TAX_ZERO: traditional withdrawals > 0 but withdrawalTaxes == 0 (beyond rounding)
+- MISSING_CASH_HUB: takeHomeDefinition=NET_TO_CHECKING but no account with type CHECKING exists
+- WITHDRAWAL_TAX_UNFUNDED: withdrawal taxes computed but not funded (legacy path; should not occur after gross-up)
 
 ## Warnings (minimum set)
 - RSU_WITHHOLDING_DEFAULT_USED
