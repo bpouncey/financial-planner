@@ -73,6 +73,16 @@ function formatCell(value: number): string {
   return formatCurrency(value);
 }
 
+/** Scale factor for current year contributions (remaining months / 12). 1 for past/future years. */
+function getCurrentYearContribScale(year: number): number {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1; // 1–12
+  if (year !== currentYear) return 1;
+  const remainingMonths = Math.max(0, 12 - currentMonth);
+  return remainingMonths / 12;
+}
+
 function formatAgeCell(year: number, people: { birthYear?: number }[]): string {
   const ages = people
     .filter((p) => p.birthYear != null)
@@ -731,7 +741,9 @@ export function YearByYearTable() {
                 {viewMode === "full" && visibleAccounts.map((a) => {
                   if (!getAccountColVisibility(colVisibility, a.id, "contrib"))
                     return null;
-                  const contrib = row.contributionsByAccount[a.id] ?? 0;
+                  const rawContrib = row.contributionsByAccount[a.id] ?? 0;
+                  const contribScale = getCurrentYearContribScale(row.year);
+                  const contrib = Math.round(rawContrib * contribScale);
                   const whyZero =
                     contrib === 0
                       ? getWhyZeroContribution(

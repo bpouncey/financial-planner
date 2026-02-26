@@ -35,6 +35,7 @@ function formatValue(
     case "effectiveTaxRate":
     case "salaryGrowthOverride":
     case "retirementEffectiveTaxRate":
+    case "traditionalWithdrawalsTaxRate":
     case "stressTestFirstYearReturn":
       return typeof value === "number" ? formatPercent(value) : String(value);
     case "retirementMonthlySpend":
@@ -47,6 +48,8 @@ function formatValue(
       return String(value);
     case "includeEmployerMatch":
       return value ? "Yes" : "No";
+    case "retireWhen":
+      return value === "AGE" ? "At target age only" : value === "FI" ? "When FI reached" : "Age or FI (whichever first)";
     default:
       return String(value);
   }
@@ -65,7 +68,9 @@ const DRIVER_LABELS: Partial<Record<keyof Scenario, string>> = {
   salaryGrowthOverride: "Salary growth override",
   includeEmployerMatch: "Include employer match",
   retirementStartYear: "Retirement start year",
+  retireWhen: "Retirement trigger",
   retirementEffectiveTaxRate: "Retirement tax rate",
+  traditionalWithdrawalsTaxRate: "Traditional withdrawal tax rate",
   stressTestFirstYearReturn: "Stress test first-year return",
 };
 
@@ -83,7 +88,9 @@ const DRIVER_KEYS: (keyof Scenario)[] = [
   "salaryGrowthOverride",
   "includeEmployerMatch",
   "retirementStartYear",
+  "retireWhen",
   "retirementEffectiveTaxRate",
+  "traditionalWithdrawalsTaxRate",
   "stressTestFirstYearReturn",
 ];
 

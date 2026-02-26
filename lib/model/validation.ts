@@ -34,6 +34,31 @@ export function validateHousehold(
   const accountIds = new Set(household.accounts.map((a) => a.id));
   const personIds = new Set(household.people.map((p) => p.id));
 
+  // takeHomeDefinition: OVERRIDE requires netToCheckingOverride
+  const takeHomeDefinition = scenario.takeHomeDefinition ?? "NET_TO_CHECKING";
+  if (takeHomeDefinition === "OVERRIDE") {
+    const override = scenario.netToCheckingOverride;
+    if (override == null || (typeof override === "number" && Number.isNaN(override))) {
+      errors.push({
+        code: "INPUT_DEFINITION_CONFLICT",
+        message:
+          "takeHomeDefinition is OVERRIDE but netToCheckingOverride is not set. Provide a value or switch to NET_TO_CHECKING or AFTER_TAX_ONLY.",
+      });
+    }
+  }
+
+  // NET_TO_CHECKING requires a CHECKING account
+  if (takeHomeDefinition === "NET_TO_CHECKING") {
+    const hasCheckingAccount = household.accounts.some((a) => a.type === "CHECKING");
+    if (!hasCheckingAccount) {
+      errors.push({
+        code: "MISSING_CASH_HUB",
+        message:
+          "Take-home definition is NET_TO_CHECKING but no CHECKING account exists. Add a CHECKING account or change take-home definition to AFTER_TAX_ONLY.",
+      });
+    }
+  }
+
   // Validate payroll contribution account refs (no disappearing dollars)
   for (const person of household.people) {
     for (const c of person.payroll.payrollInvesting) {
@@ -68,6 +93,28 @@ export function validateHousehold(
         message: c.accountId
           ? `Monthly savings contribution references non-existent account: ${c.accountId}`
           : "Select an account for each monthly savings contribution",
+      });
+    }
+  }
+
+  // includeEmployerMatch=false but household has employer contributions defined
+  const includeEmployerMatch = scenario.includeEmployerMatch ?? false;
+  if (!includeEmployerMatch) {
+    let hasEmployerContrib = false;
+    for (const person of household.people) {
+      for (const c of person.payroll.payrollInvesting) {
+        if (c.contributorType === "employer") {
+          hasEmployerContrib = true;
+          break;
+        }
+      }
+      if (hasEmployerContrib) break;
+    }
+    if (hasEmployerContrib) {
+      warnings.push({
+        code: "EMPLOYER_MATCH_DISABLED_BUT_PRESENT",
+        message:
+          "Employer match is disabled for this scenario but payroll includes employer contributions. Those contributions are excluded from the projection.",
       });
     }
   }

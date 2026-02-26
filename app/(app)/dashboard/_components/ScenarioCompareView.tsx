@@ -240,12 +240,13 @@ export function ScenarioCompareView() {
                       borderRadius: "6px",
                     }}
                     labelFormatter={(year) => `Year ${year}`}
-                    formatter={(value: number | undefined, name?: string) => {
+                    formatter={(value, name?: string) => {
                       const key = name ?? "";
                       const p = projections.find((x) =>
                         escapeDataKey(x.scenarioId) === key
                       );
-                      return [formatCurrency(value ?? 0), p?.scenarioName ?? key];
+                      const numValue = typeof value === 'number' ? value : 0;
+                      return [formatCurrency(numValue), p?.scenarioName ?? key];
                     }}
                   />
                   <Legend />
@@ -319,12 +320,13 @@ export function ScenarioCompareView() {
                       borderRadius: "6px",
                     }}
                     labelFormatter={(year) => `Year ${year}`}
-                    formatter={(value: number | undefined, name?: string) => {
+                    formatter={(value, name?: string) => {
                       const key = name ?? "";
                       const p = projections.find((x) =>
                         escapeDataKey(x.scenarioId) === key
                       );
-                      return [formatCurrency(value ?? 0), p?.scenarioName ?? key];
+                      const numValue = typeof value === 'number' ? value : 0;
+                      return [formatCurrency(numValue), p?.scenarioName ?? key];
                     }}
                   />
                   <Legend />

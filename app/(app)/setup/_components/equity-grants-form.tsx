@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useHouseholdStore } from "@/stores/household";
-import type { EquityGrant, PriceAssumptionMode, VestingEntry } from "@/lib/types/zod";
+import type { EquityGrant, PriceAssumptionMode, SellStrategy, VestingEntry } from "@/lib/types/zod";
 import { EquityGrantSchema } from "@/lib/types/zod";
 import { FormFieldWithHelp } from "@/components/ui/form-field-with-help";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
@@ -32,6 +32,9 @@ interface GrantFormState {
   growthRate: string;
   withholdingRate: string;
   destinationAccountId: string;
+  sellStrategy: SellStrategy;
+  isEnabled: boolean;
+  vestingProbability: string;
 }
 
 function emptyFormState(): GrantFormState {
@@ -44,8 +47,11 @@ function emptyFormState(): GrantFormState {
     priceMode: "FIXED",
     fixedPrice: "",
     growthRate: "",
-    withholdingRate: "0.4",
+    withholdingRate: "30",
     destinationAccountId: "",
+    sellStrategy: "SELL_ALL",
+    isEnabled: true,
+    vestingProbability: "",
   };
 }
 
@@ -72,8 +78,11 @@ function formStateFromGrant(g: EquityGrant): GrantFormState {
       g.priceAssumption.growthRate != null
         ? String(g.priceAssumption.growthRate * 100)
         : "",
-    withholdingRate: String((g.withholdingRate * 100).toFixed(0)),
+    withholdingRate: String(((g.withholdingRate ?? 0.3) * 100).toFixed(0)),
     destinationAccountId: g.destinationAccountId,
+    sellStrategy: g.sellStrategy ?? "SELL_ALL",
+    isEnabled: g.isEnabled !== false,
+    vestingProbability: g.vestingProbability != null ? String(g.vestingProbability * 100) : "",
   };
 }
 
@@ -110,6 +119,10 @@ function parseGrantFromForm(state: GrantFormState): EquityGrant | null {
           fixedPrice: fixedPrice > 0 ? fixedPrice : undefined,
         };
 
+  const vestingProbability = state.vestingProbability.trim()
+    ? parseFloat(state.vestingProbability) / 100
+    : undefined;
+
   const result = EquityGrantSchema.safeParse({
     id: state.id || crypto.randomUUID(),
     ownerPersonId: state.ownerPersonId,
@@ -120,6 +133,9 @@ function parseGrantFromForm(state: GrantFormState): EquityGrant | null {
     priceAssumption,
     withholdingRate,
     destinationAccountId: state.destinationAccountId,
+    sellStrategy: state.sellStrategy,
+    isEnabled: state.isEnabled,
+    vestingProbability,
   });
   return result.success ? result.data : null;
 }
@@ -135,7 +151,11 @@ export function EquityGrantsForm() {
   const people = household.people;
 
   const taxableOrCashAccounts = accounts.filter(
-    (a) => a.type === "TAXABLE" || a.type === "CASH" || a.type === "MONEY_MARKET"
+    (a) =>
+      a.type === "TAXABLE" ||
+      a.type === "CASH" ||
+      a.type === "MONEY_MARKET" ||
+      a.type === "EMPLOYER_STOCK"
   );
 
   function handleStartAdd() {
@@ -425,8 +445,74 @@ export function EquityGrantsForm() {
                 onChange={(e) =>
                   setFormState((s) => ({ ...s, withholdingRate: e.target.value }))
                 }
+                placeholder="30"
               />
             </FormFieldWithHelp>
+            <FormFieldWithHelp
+              id="grant-sell-strategy"
+              label="Strategy"
+              helpContent="SELL_ALL: sell all shares, deposit net proceeds. HOLD: deposit net share value to Employer Stock account (excluded from FI by default). SELL_TO_COVER: sell only to cover taxes."
+            >
+              <Select
+                value={formState.sellStrategy}
+                onValueChange={(value) =>
+                  setFormState((s) => ({
+                    ...s,
+                    sellStrategy: value as SellStrategy,
+                    destinationAccountId:
+                      value === "HOLD"
+                        ? accounts.find((a) => a.type === "EMPLOYER_STOCK")?.id ??
+                          formState.destinationAccountId
+                        : formState.destinationAccountId,
+                  }))
+                }
+              >
+                <SelectTrigger id="grant-sell-strategy" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="SELL_ALL">Sell all</SelectItem>
+                  <SelectItem value="SELL_TO_COVER">Sell to cover taxes</SelectItem>
+                  <SelectItem value="HOLD">Hold shares</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormFieldWithHelp>
+            <FormFieldWithHelp
+              id="grant-vesting-probability"
+              label="Vesting probability % (optional)"
+              helpContent="Scale vest value by this probability (0–100). Use for conservative scenarios."
+            >
+              <Input
+                id="grant-vesting-probability"
+                type="number"
+                step="1"
+                min="0"
+                max="100"
+                value={formState.vestingProbability}
+                onChange={(e) =>
+                  setFormState((s) => ({ ...s, vestingProbability: e.target.value }))
+                }
+                placeholder="100"
+              />
+            </FormFieldWithHelp>
+            <div className="flex items-center gap-2 sm:col-span-2">
+              <input
+                id="grant-enabled"
+                type="checkbox"
+                checked={formState.isEnabled}
+                onChange={(e) =>
+                  setFormState((s) => ({ ...s, isEnabled: e.target.checked }))
+                }
+                className="h-4 w-4 rounded border-border bg-surface text-accent focus:ring-accent"
+              />
+              <Label htmlFor="grant-enabled" className="cursor-pointer text-sm">
+                Include in projections
+              </Label>
+              <HelpTooltip
+                content="When unchecked, this grant is excluded from all scenarios. Use scenario overrides to disable per scenario."
+                side="top"
+              />
+            </div>
           </div>
 
           <div className="mt-4">

@@ -1,0 +1,45 @@
+---
+alwaysApply: true
+---
+You are helping implement accuracy fixes in a financial projection/tracking app.
+
+NON-NEGOTIABLE CORRECTNESS
+- Cashflow identity must reconcile every year: Sources - Uses = 0 within rounding.
+  If it doesn't reconcile, return a blocking error with reconciliationDelta and suggestions.
+- Enforce “one definition per input” (no ambiguous income or contribution inputs).
+- Never silently drop or create money. Any remainder must be reconciled or explicitly routed.
+
+CASHFLOW IDENTITY — WHAT IT IS AND ISN'T
+- The identity is an internal accounting check. It ensures our model doesn't silently create or destroy money.
+- We never force income = expenses. We never require a zero-based budget.
+- cashSavingsChange is the residual: when income > expenses, surplus goes to cash (positive change); when income < expenses, deficit draws down cash (negative change).
+- reconciliationDelta != 0 indicates a bug in our implementation (e.g. double-counting, missing flow), not a user error.
+- Never adjust user inputs (spending, income, contributions) to make the identity hold. Surface the error; fix the model.
+
+SCOPE (Phase 1 / Accuracy MVP)
+- Implement:
+  1) takeHomeDefinition with consistent netToChecking behavior (no double-counting).
+  2) Cashflow reconciliationDelta + blocking errors + optional overflow routing.
+  3) RSU 2-step modeling (vest income + withholding + net deposit).
+  4) salaryGrowthMode: NOMINAL vs REAL behavior.
+  5) Retirement withdrawal taxes (effective rates; traditional > 0 implies taxes > 0).
+  6) includeEmployerMatch toggle enforcement.
+  7) retireWhen + FI transparency outputs.
+
+ARCHITECTURE
+- Keep projection math in pure, deterministic functions (no UI state mixed in).
+- Centralize income/tax/contribution definitions in one module; UI only consumes computed outputs.
+- Money math: use integer cents or a decimal type; avoid floating-point drift.
+
+TESTING (must add/extend)
+- Unit tests for: reconciliation holds, salary growth applies, RSU vest adds taxable income + withholding,
+  employer match toggle, retirement taxes > 0 when traditional withdrawals > 0.
+- Add golden-file scenario snapshots (CSV/JSON outputs) and diff on changes.
+
+OUTPUTS & VALIDATION
+- Ensure result exports include all required yearly outputs + scenario-level errors/warnings/assumptions.
+- When changing the data model, update types + serializers + UI renderers together.
+
+RESPONSE STYLE
+- Before coding: list the files you will change and the invariants you will preserve.
+- When coding: show complete functions/modules (not tiny snippets) and update tests in the same change set.

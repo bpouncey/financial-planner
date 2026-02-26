@@ -30,12 +30,15 @@ function createDefaultScenario(): Scenario {
     inflation: DEFAULT_INFLATION,
     effectiveTaxRate: null,
     takeHomeAnnual: null, // User must set; can default later
+    takeHomeDefinition: "NET_TO_CHECKING",
     swr: DEFAULT_SWR,
     retirementMonthlySpend: 5000,
     currentMonthlySpend: 5000,
     retirementAgeTarget: 65,
     salaryGrowthOverride: null,
+    salaryGrowthMode: "REAL",
     includeEmployerMatch: false,
+    retireWhen: "EITHER",
   });
 }
 

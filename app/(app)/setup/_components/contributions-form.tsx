@@ -5,6 +5,7 @@ import type { Contribution, ContributorType } from "@/lib/types/zod";
 import { FormFieldWithHelp } from "@/components/ui/form-field-with-help";
 import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
+import { StepperInput } from "@/components/ui/stepper-input";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -82,28 +83,26 @@ function ContributionRow({
   );
 
   const percentField = (
-    <div className="w-24">
+    <div>
       <FormFieldWithHelp
         id={percentId}
         label="%"
         helpContent={formatHelp(HELP_CONTRIBUTIONS.percentOfIncome)}
       >
-        <Input
+        <StepperInput
           id={percentId}
-          type="number"
-          step="0.5"
-          min="0"
-          max="100"
-          value={percentValue === 0 ? "" : percentValue}
-          onChange={(e) => {
-            const v = parseFloat(e.target.value);
+          min={0}
+          max={100}
+          step={0.5}
+          value={percentValue}
+          onChange={(v) =>
             onUpdate({
               ...contribution,
-              percentOfIncome: Number.isNaN(v) ? undefined : v,
+              percentOfIncome: v,
               amountMonthly: undefined,
               amountAnnual: undefined,
-            });
-          }}
+            })
+          }
           placeholder="0"
         />
       </FormFieldWithHelp>
@@ -111,7 +110,7 @@ function ContributionRow({
   );
 
   return (
-    <div className="flex flex-wrap items-end gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <div className="min-w-[160px] flex-1">
         <FormFieldWithHelp
           id={accountId}
@@ -237,7 +236,7 @@ export function PayrollContributionsForm({
     const firstAccountId = accounts[0]?.id ?? "";
     onUpdate([
       ...contributions,
-      { accountId: firstAccountId || "", amountMonthly: 0 },
+      { accountId: firstAccountId || "", amountMonthly: 0, contributorType: "employee" },
     ]);
   }
 
@@ -296,7 +295,7 @@ export function MonthlySavingsForm() {
     const firstAccountId = accounts[0]?.id ?? "";
     setMonthlySavings([
       ...contributions,
-      { accountId: firstAccountId || "", amountMonthly: 0 },
+      { accountId: firstAccountId || "", amountMonthly: 0, contributorType: "employee" },
     ]);
   }
 
@@ -353,7 +352,7 @@ export function OutOfPocketForm() {
     const firstAccountId = accounts[0]?.id ?? "";
     setOutOfPocketInvesting([
       ...contributions,
-      { accountId: firstAccountId || "", amountMonthly: 0 },
+      { accountId: firstAccountId || "", amountMonthly: 0, contributorType: "employee" },
     ]);
   }
 

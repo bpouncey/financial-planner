@@ -72,10 +72,10 @@ export function InvestedAssetsChart({ projection }: InvestedAssetsChartProps) {
               borderRadius: "6px",
             }}
             labelFormatter={(year) => `Year ${year}`}
-            formatter={(value: number | undefined) => [
-              formatCurrency(value ?? 0),
-              "Invested assets",
-            ]}
+            formatter={(value) => {
+              const numValue = typeof value === 'number' ? value : 0;
+              return [formatCurrency(numValue), "Invested assets"];
+            }}
           />
           <Legend
             formatter={() => "Invested assets"}

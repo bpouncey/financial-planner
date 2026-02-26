@@ -43,6 +43,12 @@ export const VestingEntrySchema = z.object({
 });
 export type VestingEntry = z.infer<typeof VestingEntrySchema>;
 
+export const SellStrategySchema = z
+  .enum(["SELL_ALL", "SELL_TO_COVER", "HOLD"])
+  .optional()
+  .default("SELL_ALL");
+export type SellStrategy = z.infer<typeof SellStrategySchema>;
+
 export const EquityGrantSchema = z.object({
   id: z.string(),
   ownerPersonId: z.string(),
@@ -51,8 +57,15 @@ export const EquityGrantSchema = z.object({
   endYear: z.number().optional(),
   vestingTable: z.array(VestingEntrySchema),
   priceAssumption: PriceAssumptionSchema,
-  withholdingRate: z.number().min(0).max(1),
+  /** Tax withholding rate at vest (0–1). Default 0.30 (30%). */
+  withholdingRate: z.number().min(0).max(1).default(0.3),
   destinationAccountId: z.string(),
+  /** SELL_ALL: sell all shares, deposit net proceeds to destination. HOLD: deposit net share value to EMPLOYER_STOCK. SELL_TO_COVER: sell to cover taxes only. Default SELL_ALL. */
+  sellStrategy: SellStrategySchema.optional(),
+  /** Whether this grant is included in projections. Default true. Scenario override can disable per scenario. */
+  isEnabled: z.boolean().optional(),
+  /** Probability of vesting (0–1). Optional; when set, vest value is scaled by this factor. */
+  vestingProbability: z.number().min(0).max(1).optional(),
 });
 export type EquityGrant = z.infer<typeof EquityGrantSchema>;
 
@@ -149,8 +162,10 @@ const LegacyAccountTypeSchema = z
 export const AccountTypeSchema = z.union([
   z.enum([
     "CASH",
+    "CHECKING",
     "TAXABLE",
     "MONEY_MARKET",
+    "EMPLOYER_STOCK",
     "TRADITIONAL_401K",
     "ROTH_401K",
     "TRADITIONAL_IRA",
@@ -182,6 +197,24 @@ export type Account = z.infer<typeof AccountSchema>;
 export const ModelingModeSchema = z.enum(["REAL", "NOMINAL"]);
 export type ModelingMode = z.infer<typeof ModelingModeSchema>;
 
+export const SalaryGrowthModeSchema = z
+  .enum(["NOMINAL", "REAL"])
+  .default("REAL");
+export type SalaryGrowthMode = z.infer<typeof SalaryGrowthModeSchema>;
+
+export const TakeHomeDefinitionSchema = z
+  .enum(["NET_TO_CHECKING", "AFTER_TAX_ONLY", "OVERRIDE"])
+  .default("NET_TO_CHECKING");
+export type TakeHomeDefinition = z.infer<typeof TakeHomeDefinitionSchema>;
+
+export const RetireWhenSchema = z
+  .enum(["AGE", "FI", "EITHER"])
+  .default("EITHER");
+export type RetireWhen = z.infer<typeof RetireWhenSchema>;
+
+export const WithdrawalBucketSchema = z.enum(["TAXABLE", "TAX_DEFERRED", "ROTH"]);
+export type WithdrawalBucket = z.infer<typeof WithdrawalBucketSchema>;
+
 export const ScenarioSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -190,21 +223,54 @@ export const ScenarioSchema = z.object({
   inflation: z.number(),
   effectiveTaxRate: z.number().nullable(),
   takeHomeAnnual: z.number().nullable(),
+  takeHomeDefinition: TakeHomeDefinitionSchema,
+  netToCheckingOverride: z.number().nullable().optional(),
   swr: z.number(),
   retirementMonthlySpend: z.number(),
   currentMonthlySpend: z.number().optional(), // current spending before retirement
   retirementAgeTarget: z.number().default(65),
   salaryGrowthOverride: z.number().nullable().optional(),
+  /** NOMINAL: salary grows by salaryGrowthRate. REAL: real salary constant; nominal grows by inflation. */
+  salaryGrowthMode: SalaryGrowthModeSchema,
   includeEmployerMatch: z.boolean().default(false),
   equityPolicy: EquityPolicySchema.optional(),
   retirementStartYear: z.number().optional(),
+  /** AGE: retire at target age only. FI: retire when portfolio reaches FI. EITHER: whichever comes first. */
+  retireWhen: RetireWhenSchema,
+  /** @deprecated Use withdrawalOrderBuckets. Kept for backward compatibility. */
   withdrawalOrder: z
     .array(AccountTypeSchema)
     .default(["TAXABLE", "MONEY_MARKET", "TRADITIONAL_401K", "TRADITIONAL_IRA", "403B", "ROTH_401K", "ROTH_IRA"]),
+  /** Bucket-based withdrawal order. Engine prefers this over withdrawalOrder if present. */
+  withdrawalOrderBuckets: z
+    .array(WithdrawalBucketSchema)
+    .default(["TAXABLE", "TAX_DEFERRED", "ROTH"]),
   stressTestFirstYearReturn: z.number().nullable().optional(),
+  /** @deprecated Use traditionalWithdrawalsTaxRate. Kept for backward compatibility. */
   retirementEffectiveTaxRate: z.number().min(0).max(1).optional(),
+  /** Effective tax rate on Traditional (401k, IRA, 403b, HSA) withdrawals. Falls back to retirementEffectiveTaxRate if unset. */
+  traditionalWithdrawalsTaxRate: z.number().min(0).max(1).optional(),
+  /** Effective tax rate on Roth withdrawals. MVP: always 0. */
+  rothWithdrawalsTaxRate: z.number().min(0).max(1).optional().default(0),
+  /** Effective tax rate on taxable brokerage withdrawals. MVP: 0 (capital gains modeled separately later). */
+  taxableWithdrawalsTaxRate: z.number().min(0).max(1).optional().default(0),
   contributionOverrides: z.array(ContributionOverrideSchema).optional().default([]),
   eventOverrides: z.array(EventSchema).optional().default([]),
+  /** When true and reconciliationDelta > 0, route overflow to Taxable Brokerage (Overflow). */
+  autoFixOverflow: z.boolean().optional().default(false),
+  /** When true and reconciliationDelta > 0 in accumulation, post surplus to pseudo-expense (no FI impact). */
+  enableUnallocatedSurplusBalancing: z.boolean().optional().default(true),
+  /** Frequency for unallocated surplus balancing. Phase 1: both treated as annual. */
+  unallocatedSurplusFrequency: z.enum(["Monthly", "Annual"]).optional().default("Monthly"),
+  /** Per-grant overrides: exclude grants from this scenario when isEnabled: false. */
+  equityGrantOverrides: z
+    .array(
+      z.object({
+        grantId: z.string(),
+        isEnabled: z.boolean().optional(),
+      })
+    )
+    .optional(),
 });
 export type Scenario = z.infer<typeof ScenarioSchema>;
 

@@ -38,6 +38,7 @@ const ACCOUNT_TYPE_ORDER: AccountType[] = [
   "CASH",
   "TAXABLE",
   "MONEY_MARKET",
+  "EMPLOYER_STOCK",
   "TRADITIONAL_401K",
   "ROTH_401K",
   "TRADITIONAL_IRA",
@@ -48,8 +49,10 @@ const ACCOUNT_TYPE_ORDER: AccountType[] = [
 
 const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
   CASH: "Cash",
+  CHECKING: "Checking",
   TAXABLE: "Taxable",
   MONEY_MARKET: "Money Market",
+  EMPLOYER_STOCK: "Employer Stock",
   TRADITIONAL_401K: "Traditional 401k",
   ROTH_401K: "Roth 401k",
   TRADITIONAL_IRA: "Traditional IRA",
@@ -60,8 +63,10 @@ const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
 
 const ACCOUNT_TYPE_COLORS: Record<AccountType, string> = {
   CASH: "#a1a1aa",
+  CHECKING: "#71717a",
   TAXABLE: "#3b82f6",
   MONEY_MARKET: "#6366f1",
+  EMPLOYER_STOCK: "#8b5cf6",
   TRADITIONAL_401K: "#f59e0b",
   ROTH_401K: "#84cc16",
   TRADITIONAL_IRA: "#ea580c",

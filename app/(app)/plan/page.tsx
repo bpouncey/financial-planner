@@ -9,6 +9,7 @@ import { ContributionVsGrowthChartSection } from "../dashboard/_components/Contr
 import { YearByYearTable } from "../dashboard/_components/YearByYearTable";
 import { ExportProjectionButton } from "../dashboard/_components/ExportProjectionButton";
 import { ValidationBanner } from "@/app/(app)/setup/_components/validation-banner";
+import { ShortfallBanner } from "../dashboard/_components/ShortfallBanner";
 import { WhatChangedPanel } from "../dashboard/_components/WhatChangedPanel";
 import { PlanViewProvider } from "../_components/PlanViewContext";
 
@@ -37,6 +38,7 @@ export default function PlanPage() {
           </div>
         </div>
         <ValidationBanner />
+        <ShortfallBanner />
         <WhatChangedPanel />
         <div className="mt-8 space-y-8">
           <AssumptionsPanel />

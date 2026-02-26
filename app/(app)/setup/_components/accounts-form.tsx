@@ -30,8 +30,10 @@ import { Badge } from "@/components/ui/badge";
 
 const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
   { value: "CASH", label: "Cash" },
+  { value: "CHECKING", label: "Checking" },
   { value: "TAXABLE", label: "Taxable" },
   { value: "MONEY_MARKET", label: "Money Market" },
+  { value: "EMPLOYER_STOCK", label: "Employer Stock" },
   { value: "TRADITIONAL_401K", label: "Traditional 401k" },
   { value: "ROTH_401K", label: "Roth 401k" },
   { value: "TRADITIONAL_IRA", label: "Traditional IRA" },
@@ -244,6 +246,7 @@ export function AccountsForm() {
                     ...s,
                     type: newType,
                     apy: newType === "MONEY_MARKET" ? s.apy : "",
+                    includedInFIAssets: newType === "EMPLOYER_STOCK" ? false : s.includedInFIAssets,
                   }));
                 }}
               >
@@ -400,27 +403,30 @@ export function AccountsForm() {
                 : {};
             const personId = getPersonIdForOwner(household.people, account.owner);
             const bucket401k = personId ? byPersonBucket[personId]?.["401k"] : undefined;
-            const bucketIra = personId ? byPersonBucket[personId]?.["ira"] : undefined;
+            const bucketIra = personId ? byPersonBucket[personId]?.ira : undefined;
+            const bucketHsa = personId ? byPersonBucket[personId]?.hsa : undefined;
             const is401k =
               account.type === "TRADITIONAL_401K" ||
               account.type === "ROTH_401K" ||
               account.type === "403B";
             const isIra =
               account.type === "TRADITIONAL_IRA" || account.type === "ROTH_IRA";
+            const isHsa = account.type === "HSA";
             const totalInBucket =
               is401k && bucket401k != null
                 ? bucket401k
                 : isIra && bucketIra != null
                   ? bucketIra
-                  : undefined;
-            // Only show 401k employee/employer breakdown on accounts that have payroll contributions.
-            // Otherwise we'd show Jillian's total payroll deferral on accounts she doesn't contribute to via payroll.
+                  : isHsa && bucketHsa != null
+                    ? bucketHsa
+                    : undefined;
+            // For 401k/403b: always use person's total for limit (IRS limit is per person, not per account).
             const accountHasPayroll =
               accountBreakdown != null &&
               ((accountBreakdown.employee ?? 0) > 0 ||
                 (accountBreakdown.employer ?? 0) > 0);
             const totalEmployee401k =
-              is401k && personId && accountHasPayroll
+              is401k && personId
                 ? breakdownByPersonBucket[personId]?.employee
                 : undefined;
             const hasLimit = LIMITED_ACCOUNT_TYPES.includes(account.type);
@@ -455,12 +461,12 @@ export function AccountsForm() {
                       contributed={contributed}
                       year={household.startYear}
                       breakdown={
-                        is401k && personId && accountHasPayroll
+                        is401k && personId
                           ? breakdownByPersonBucket[personId]
                           : accountBreakdown
                       }
                       totalContributedInBucket={
-                        accountHasPayroll ? totalInBucket : undefined
+                        totalInBucket
                       }
                       totalEmployeeIn401kBucket={totalEmployee401k}
                       variant="full"

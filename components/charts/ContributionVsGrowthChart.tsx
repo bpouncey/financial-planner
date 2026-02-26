@@ -117,14 +117,17 @@ export function ContributionVsGrowthChart({
               borderRadius: "6px",
             }}
             labelFormatter={(year) => `Year ${year}`}
-            formatter={(value: number | undefined, name?: string) => [
-              formatCurrency(value ?? 0),
-              name === "contribution"
-                ? "Contributions"
-                : name === "growth"
-                  ? "Growth"
-                  : "Net worth",
-            ]}
+            formatter={(value, name?: string) => {
+              const numValue = typeof value === 'number' ? value : 0;
+              return [
+                formatCurrency(numValue),
+                name === "contribution"
+                  ? "Contributions"
+                  : name === "growth"
+                    ? "Growth"
+                    : "Net worth",
+              ];
+            }}
             cursor={{ fill: "var(--border)", opacity: 0.3 }}
           />
           <Legend

@@ -16,6 +16,10 @@ import {
   PENALTY_FREE_AGE_TRADITIONAL,
   PENALTY_FREE_AGE_HSA,
 } from "@/lib/model/constants";
+import {
+  capContributionsAtIRSLimits,
+  getContributionsBreakdown,
+} from "@/lib/model/contribution-limits";
 
 /** Contribution-like shape with optional month bounds (Contribution or ContributionOverride). */
 type ContributionLike = Pick<
@@ -104,34 +108,179 @@ function getAccountsInWithdrawalOrder(
   return result;
 }
 
+/** Map account type to withdrawal bucket */
+function getWithdrawalBucket(accountType: string): string | null {
+  // TAXABLE bucket
+  if (["TAXABLE", "MONEY_MARKET", "CASH", "CHECKING", "EMPLOYER_STOCK"].includes(accountType)) {
+    return "TAXABLE";
+  }
+  // TAX_DEFERRED bucket
+  if (["TRADITIONAL_401K", "TRADITIONAL_IRA", "403B", "HSA", "TRADITIONAL"].includes(accountType)) {
+    return "TAX_DEFERRED";
+  }
+  // ROTH bucket
+  if (["ROTH_401K", "ROTH_IRA", "ROTH"].includes(accountType)) {
+    return "ROTH";
+  }
+  return null;
+}
+
+/** Return accounts ordered for withdrawal using bucket-based strategy */
+function getAccountsInWithdrawalOrderByBuckets(
+  accounts: Account[],
+  withdrawalOrderBuckets: string[]
+): Account[] {
+  // Group accounts by bucket
+  const byBucket = new Map<string, Account[]>();
+  for (const a of accounts) {
+    const bucket = getWithdrawalBucket(a.type);
+    if (!bucket) continue;
+    const list = byBucket.get(bucket) ?? [];
+    list.push(a);
+    byBucket.set(bucket, list);
+  }
+  
+  // Order by buckets, within bucket order by balance (descending) for Phase 1
+  const result: Account[] = [];
+  for (const bucket of withdrawalOrderBuckets) {
+    const list = byBucket.get(bucket) ?? [];
+    result.push(...list);
+  }
+  return result;
+}
+
 /** Account types that are taxable on withdrawal and restricted until 59.5+ */
 function isPreTaxRetirement(type: string): boolean {
-  return type === "TRADITIONAL" || type === "403B";
+  return (
+    type === "TRADITIONAL" ||
+    type === "TRADITIONAL_401K" ||
+    type === "TRADITIONAL_IRA" ||
+    type === "403B" ||
+    type === "HSA"
+  );
+}
+
+/** Account types that are taxable brokerage / money market (withdrawals taxed as capital gains; MVP: 0 rate). */
+function isTaxableBrokerage(type: string): boolean {
+  return type === "TAXABLE" || type === "MONEY_MARKET";
+}
+
+/** Pre-tax employee account types (Traditional 401k, IRA, 403b, HSA). */
+const PRE_TAX_ACCOUNT_TYPES = new Set([
+  "TRADITIONAL_401K",
+  "TRADITIONAL_IRA",
+  "403B",
+  "HSA",
+]);
+
+/** Roth employee account types. */
+const ROTH_ACCOUNT_TYPES = new Set(["ROTH_401K", "ROTH_IRA"]);
+
+/** Rounding threshold for cashflow reconciliation (1 cent). */
+const RECONCILIATION_ROUNDING_THRESHOLD = 0.01;
+
+/** Get payroll contribution split from capped contributions and breakdown. */
+function getPayrollContributionsSplitFromCapped(
+  household: Household,
+  cappedByAccount: Record<string, number>,
+  breakdown: Record<string, { employee: number; employer: number }>
+): { employeePreTaxContribs: number; employeeRothContribs: number; employerContribs: number } {
+  const accountById = new Map(household.accounts.map((a) => [a.id, a]));
+  let employeePreTax = 0;
+  let employeeRoth = 0;
+  let employer = 0;
+  for (const [accountId, b] of Object.entries(breakdown)) {
+    const acct = accountById.get(accountId);
+    const type = acct?.type ?? "";
+    const total = cappedByAccount[accountId] ?? 0;
+    const denom = b.employee + b.employer;
+    const empShare = denom > 0 ? b.employee / denom : 0;
+    const emplShare = denom > 0 ? b.employer / denom : 0;
+    const empAmt = total * empShare;
+    const emplAmt = total * emplShare;
+    if (PRE_TAX_ACCOUNT_TYPES.has(type)) {
+      employeePreTax += empAmt;
+    } else if (ROTH_ACCOUNT_TYPES.has(type)) {
+      employeeRoth += empAmt;
+    }
+    employer += emplAmt;
+  }
+  return {
+    employeePreTaxContribs: employeePreTax,
+    employeeRothContribs: employeeRoth,
+    employerContribs: employer,
+  };
 }
 
 function getAccessibleAccountTypes(year: number, people: Person[]): Set<string> {
-  const accessible = new Set<string>(["CASH", "TAXABLE", "MONEY_MARKET", "ROTH"]);
+  const accessible = new Set<string>([
+    "CASH",
+    "TAXABLE",
+    "MONEY_MARKET",
+    "ROTH",
+    "ROTH_401K",
+    "ROTH_IRA",
+  ]);
   const oldestAge = people.reduce((max, p) => {
     const by = p.birthYear;
     return by != null ? Math.max(max, year - by) : max;
   }, -1);
   if (oldestAge < 0)
-    return new Set(["CASH", "TAXABLE", "MONEY_MARKET", "TRADITIONAL", "403B", "ROTH", "HSA"]);
+    return new Set([
+      "CASH",
+      "TAXABLE",
+      "MONEY_MARKET",
+      "TRADITIONAL",
+      "TRADITIONAL_401K",
+      "TRADITIONAL_IRA",
+      "403B",
+      "ROTH",
+      "ROTH_401K",
+      "ROTH_IRA",
+      "HSA",
+    ]);
   if (oldestAge >= PENALTY_FREE_AGE_TRADITIONAL) {
     accessible.add("TRADITIONAL");
+    accessible.add("TRADITIONAL_401K");
+    accessible.add("TRADITIONAL_IRA");
     accessible.add("403B");
   }
   if (oldestAge >= PENALTY_FREE_AGE_HSA) accessible.add("HSA");
   return accessible;
 }
 
-/** Get net RSU vest proceeds by account for a given year */
-function getRsuVestProceeds(
+/** RSU vest breakdown: vestValue (W2 income), withholding, netProceeds, and by-account deposits. */
+export interface RsuVestResult {
+  vestValue: number;
+  withholding: number;
+  netProceeds: number;
+  byAccount: Record<string, number>;
+}
+
+/** Resolve whether a grant is enabled for a scenario (base isEnabled + scenario override). */
+function isGrantEnabledForScenario(
+  grantId: string,
+  grant: { isEnabled?: boolean },
+  scenario: Scenario
+): boolean {
+  const override = scenario.equityGrantOverrides?.find((o) => o.grantId === grantId);
+  if (override?.isEnabled === false) return false;
+  if (override?.isEnabled === true) return true;
+  return grant.isEnabled !== false;
+}
+
+/** Get RSU vest breakdown for a given year: vestValue (W2 income), withholding, netProceeds, deposits by account. */
+function getRsuVestBreakdown(
   household: Household,
-  year: number
-): Record<string, number> {
-  const out: Record<string, number> = {};
+  year: number,
+  scenario: Scenario
+): RsuVestResult {
+  let vestValue = 0;
+  let withholding = 0;
+  const byAccount: Record<string, number> = {};
   for (const grant of household.equityGrants ?? []) {
+    if (!isGrantEnabledForScenario(grant.id, grant, scenario)) continue;
+
     const entry = grant.vestingTable?.find((e) => e.year === year);
     if (!entry || entry.shares <= 0) continue;
 
@@ -140,15 +289,26 @@ function getRsuVestProceeds(
       year,
       grant.startYear
     );
-    const vestedValue = entry.shares * price;
-    const withholding = vestedValue * grant.withholdingRate;
-    const netProceeds = vestedValue - withholding;
+    const vestedValueRaw = entry.shares * price;
+    const prob = grant.vestingProbability ?? 1;
+    const vestedValue = vestedValueRaw * prob;
+    const grantWithholding = vestedValue * (grant.withholdingRate ?? 0.3);
+    const netProceeds = vestedValue - grantWithholding;
+
+    vestValue += vestedValue;
+    withholding += grantWithholding;
 
     const destId = grant.destinationAccountId;
-    if (!destId) continue;
-    out[destId] = (out[destId] ?? 0) + netProceeds;
+    if (destId) {
+      byAccount[destId] = (byAccount[destId] ?? 0) + netProceeds;
+    }
   }
-  return out;
+  return {
+    vestValue,
+    withholding,
+    netProceeds: vestValue - withholding,
+    byAccount,
+  };
 }
 
 export interface YearRow {
@@ -170,6 +330,53 @@ export interface YearRow {
   phase?: "accumulation" | "withdrawal";
   /** Taxes on Traditional account withdrawals in withdrawal phase. */
   withdrawalPhaseTaxes?: number;
+  /** Accumulation phase: employee pre-tax (401k, IRA, 403b, HSA) payroll contributions. */
+  employeePreTaxContribs?: number;
+  /** Accumulation phase: employee Roth (Roth 401k, Roth IRA) payroll contributions. */
+  employeeRothContribs?: number;
+  /** Accumulation phase: employer match/contributions. */
+  employerContribs?: number;
+  /** Net cash deposited to checking (single source of truth per takeHomeDefinition). */
+  netToChecking?: number;
+  /** Taxes withheld via payroll (accumulation phase). */
+  taxesPayroll?: number;
+  /** Taxes outside payroll (e.g. estimated quarterly). Phase 1: typically 0. */
+  taxesAdditional?: number;
+  /** Cashflow identity check: Sources - Uses. Must be 0 within rounding; non-zero indicates model bug. */
+  reconciliationDelta?: number;
+  /** RSU vest value (W2 income) in accumulation phase. */
+  rsuVestValue?: number;
+  /** RSU withholding (tax withheld at vest). */
+  rsuWithholding?: number;
+  /** RSU net proceeds deposited to destination accounts. */
+  rsuNetProceeds?: number;
+  /** Withdrawal phase: amount withdrawn from Traditional (401k, IRA, 403b, HSA) accounts. */
+  withdrawalsTraditional?: number;
+  /** Withdrawal phase: amount withdrawn from Roth accounts. */
+  withdrawalsRoth?: number;
+  /** Withdrawal phase: amount withdrawn from taxable brokerage/money market accounts. */
+  withdrawalsTaxable?: number;
+  /** Withdrawal phase: taxes on withdrawals (traditional × rate + roth × 0 + taxable × 0 for MVP). */
+  withdrawalTaxes?: number;
+  /** Accumulation phase: unallocated surplus pseudo-expense (balancing sink; no FI impact). */
+  unallocatedSurplus?: number;
+}
+
+export interface ValidationAssumption {
+  code: string;
+  message: string;
+}
+
+export interface ProjectionValidation {
+  errors: Array<{ code: string; message: string }>;
+  warnings: Array<{ code: string; message: string }>;
+  assumptions: ValidationAssumption[];
+}
+
+/** Shortfall when retiring by age before FI is met. */
+export interface ShortfallData {
+  portfolioSupportsPerYear: number;
+  targetSpendPerYear: number;
 }
 
 export interface ProjectionResult {
@@ -177,7 +384,14 @@ export interface ProjectionResult {
   fiNumber: number;
   fiYear: number | null;
   coastFiYear: number | null;
+  /** Computed: first person birthYear + retirementAgeTarget (or scenario override). */
+  retirementStartYear: number | null;
+  /** True when retireWhen includes AGE and portfolio at retirement age cannot support target spend. */
+  fiNotMetAtRetirementAge: boolean;
+  /** When fiNotMetAtRetirementAge: portfolio supports $X/yr at SWR; target is $Y/yr. */
+  shortfallData?: ShortfallData;
   savingsRate: number;
+  validation: ProjectionValidation;
 }
 
 /**
@@ -195,7 +409,7 @@ function overrideToContribution(o: ContributionOverride): Contribution {
     amountAnnual: o.amountAnnual,
     amountMonthly: o.amountMonthly,
     percentOfIncome: o.percentOfIncome,
-    contributorType: o.contributorType,
+    contributorType: o.contributorType ?? "employee",
     startYear: o.startYear,
     endYear: o.endYear,
     startMonth: o.startMonth,
@@ -308,17 +522,15 @@ export function runProjection(
   const fiNumber = annualRetirementSpend / scenario.swr;
 
   // Per-person gross income (salary growth, bonus) for percent-of-income contributions
+  const salaryGrowthMode = scenario.salaryGrowthMode ?? "REAL";
   const getPersonGrossIncome = (person: Person, year: number): number => {
     const yearsFromStart = year - startYear;
     const growthOverride = scenario.salaryGrowthOverride;
     const salaryGrowth =
       growthOverride ?? person.income.salaryGrowthRate ?? 0;
     const growthFactor =
-      person.income.salaryGrowthIsReal && isReal
-        ? Math.pow(
-            1 + growthFactorReal(salaryGrowth, inflation),
-            yearsFromStart
-          )
+      salaryGrowthMode === "REAL"
+        ? Math.pow(1 + inflation, yearsFromStart)
         : Math.pow(1 + salaryGrowth, yearsFromStart);
     let income = person.income.baseSalaryAnnual * growthFactor;
     if (person.income.bonusAnnual) income += person.income.bonusAnnual;
@@ -328,10 +540,13 @@ export function runProjection(
   };
 
   // Payroll investing: Person payrollInvesting -> accountId (fixed or percent-of-income)
+  // When includeEmployerMatch=false, exclude contributions where contributorType === "employer"
+  const includeEmployerMatch = scenario.includeEmployerMatch ?? false;
   const getPayrollContributions = (year: number): Record<string, number> => {
     const out: Record<string, number> = {};
     for (const person of people) {
       for (const c of person.payroll.payrollInvesting) {
+        if (!includeEmployerMatch && c.contributorType === "employer") continue;
         if (!appliesInYear(c, year)) continue;
         const months = getMonthsInYear(c, year);
         const amt =
@@ -369,39 +584,52 @@ export function runProjection(
   // Gross income: sum of person incomes with salary growth
   const getGrossIncome = (year: number): number => {
     let total = 0;
-    const yearsFromStart = year - startYear;
-    const growthOverride = scenario.salaryGrowthOverride;
     for (const person of people) {
-      const salaryGrowth =
-        growthOverride ?? person.income.salaryGrowthRate ?? 0;
-      const growthFactor =
-        person.income.salaryGrowthIsReal && isReal
-          ? Math.pow(1 + growthFactorReal(salaryGrowth, inflation), yearsFromStart)
-          : Math.pow(1 + salaryGrowth, yearsFromStart);
-      total += person.income.baseSalaryAnnual * growthFactor;
-      if (person.income.bonusAnnual) total += person.income.bonusAnnual;
-      if (person.income.bonusPercent)
-        total += person.income.baseSalaryAnnual * (person.income.bonusPercent / 100);
+      total += getPersonGrossIncome(person, year);
     }
     return total;
   };
 
-  // Mode B: take-home provided; taxes implicit
-  const takeHome = scenario.takeHomeAnnual;
+  const takeHomeInput = scenario.takeHomeAnnual;
   const effectiveRate = scenario.effectiveTaxRate;
+  const takeHomeDefinition = scenario.takeHomeDefinition ?? "NET_TO_CHECKING";
+  const netToCheckingOverride = scenario.netToCheckingOverride;
 
-  const getTakeHomeAndTaxes = (
-    gross: number
-  ): { takeHome: number; taxes: number } => {
-    if (takeHome != null) {
-      return { takeHome, taxes: gross - takeHome };
+  /**
+   * Compute netToChecking and taxes per takeHomeDefinition.
+   * NET_TO_CHECKING: takeHomeAnnual is net to checking; do not subtract payroll again.
+   * AFTER_TAX_ONLY: takeHomeAnnual is after-tax before contributions; netToChecking = takeHome - employeePreTax - employeeRoth.
+   * OVERRIDE: use netToCheckingOverride.
+   */
+  const getNetToCheckingAndTaxes = (
+    gross: number,
+    employeePreTaxContribs: number,
+    employeeRothContribs: number
+  ): { netToChecking: number; taxesPayroll: number } => {
+    // Resolve "after-tax" value: user input or computed from effectiveRate
+    let afterTaxPay: number;
+    if (takeHomeInput != null) {
+      afterTaxPay = takeHomeInput;
+    } else if (effectiveRate != null) {
+      afterTaxPay = gross * (1 - effectiveRate);
+    } else {
+      afterTaxPay = gross; // Fallback: no taxes
     }
-    if (effectiveRate != null) {
-      const taxes = gross * effectiveRate;
-      return { takeHome: gross - taxes, taxes };
+
+    let netToChecking: number;
+    if (takeHomeDefinition === "OVERRIDE" && netToCheckingOverride != null) {
+      netToChecking = netToCheckingOverride;
+    } else if (takeHomeDefinition === "NET_TO_CHECKING") {
+      netToChecking = afterTaxPay;
+    } else {
+      // AFTER_TAX_ONLY: subtract payroll contributions from after-tax pay
+      netToChecking = afterTaxPay - employeePreTaxContribs - employeeRothContribs;
     }
-    // Fallback: assume no taxes
-    return { takeHome: gross, taxes: 0 };
+
+    // taxesPayroll = gross - netToChecking - employeePreTax - employeeRoth
+    const taxesPayroll = gross - netToChecking - employeePreTaxContribs - employeeRothContribs;
+
+    return { netToChecking, taxesPayroll };
   };
 
   const currentMonthlySpend = scenario.currentMonthlySpend ?? 6353;
@@ -412,6 +640,10 @@ export function runProjection(
   const currentAnnualSpend = currentMonthlySpend * 12 + payrollDeductions;
 
   const yearRows: YearRow[] = [];
+  const validationErrors: Array<{ code: string; message: string }> = [];
+  const validationWarnings: Array<{ code: string; message: string }> = [];
+  const validationAssumptions: ValidationAssumption[] = [];
+
   let balances: Record<string, number> = {};
   for (const a of household.accounts) {
     balances[a.id] = a.startingBalance;
@@ -422,21 +654,47 @@ export function runProjection(
   let firstYearIncome = 0;
   let firstYearSaving = 0;
 
-  const withdrawalOrder =
-    scenario.withdrawalOrder ?? ["TAXABLE", "MONEY_MARKET", "TRADITIONAL", "403B", "ROTH"];
-  const orderedAccounts = getAccountsInWithdrawalOrder(
-    household.accounts,
-    withdrawalOrder
-  );
+  // Prefer bucket-based withdrawal order if present; fall back to legacy withdrawalOrder
+  const orderedAccounts = scenario.withdrawalOrderBuckets
+    ? getAccountsInWithdrawalOrderByBuckets(
+        household.accounts,
+        scenario.withdrawalOrderBuckets
+      )
+    : getAccountsInWithdrawalOrder(
+        household.accounts,
+        scenario.withdrawalOrder ?? ["TAXABLE", "MONEY_MARKET", "TRADITIONAL", "403B", "ROTH"]
+      );
+
+  const retireWhen = scenario.retireWhen ?? "EITHER";
+  const firstPerson = people[0];
+  const computedRetirementStartYear =
+    firstPerson?.birthYear != null
+      ? firstPerson.birthYear + scenario.retirementAgeTarget
+      : startYear + 30;
+  /** For EITHER: only use age-based retirement when scenario.retirementStartYear is explicitly set (backward compat). For AGE: always use computed. */
+  const effectiveRetirementStartYear =
+    scenario.retirementStartYear ??
+    (retireWhen === "AGE" ? computedRetirementStartYear : null);
+
+  let fiNotMetAtRetirementAge = false;
+  let shortfallData: { portfolioSupportsPerYear: number; targetSpendPerYear: number } | undefined;
+  let shortfallComputed = false;
 
   for (let i = 0; i < horizonYears; i++) {
     const year = startYear + i;
 
-    // Determine if we're in withdrawal phase (retired)
-    const inWithdrawal =
-      (scenario.retirementStartYear != null &&
-        year >= scenario.retirementStartYear) ||
-      (fiYear != null && year > fiYear);
+    // Determine if we're in withdrawal phase (retired) per retireWhen
+    let inWithdrawal: boolean;
+    if (retireWhen === "AGE") {
+      inWithdrawal = effectiveRetirementStartYear != null && year >= effectiveRetirementStartYear;
+    } else if (retireWhen === "FI") {
+      inWithdrawal = fiYear != null && year > fiYear;
+    } else {
+      // EITHER: retirementStartYear OR FI (when retirementStartYear set); else FI only (backward compat)
+      inWithdrawal =
+        (effectiveRetirementStartYear != null && year >= effectiveRetirementStartYear) ||
+        (fiYear != null && year > fiYear);
+    }
 
     // Apply one-time events for this year (before contributions and growth)
     for (const event of household.events ?? []) {
@@ -461,6 +719,21 @@ export function runProjection(
     const contributionsByAccount: Record<string, number> = {};
     const withdrawalByAccount: Record<string, number> = {};
     let withdrawalShortfall: number | undefined;
+    let rowEmployeePreTaxContribs: number | undefined;
+    let rowEmployeeRothContribs: number | undefined;
+    let rowEmployerContribs: number | undefined;
+    let rowNetToChecking: number | undefined;
+    let rowTaxesPayroll: number | undefined;
+    let rowTaxesAdditional: number | undefined;
+    let reconciliationDelta: number | undefined;
+    let rowRsuVestValue: number | undefined;
+    let rowRsuWithholding: number | undefined;
+    let rowRsuNetProceeds: number | undefined;
+    let rowWithdrawalsTraditional: number | undefined;
+    let rowWithdrawalsRoth: number | undefined;
+    let rowWithdrawalsTaxable: number | undefined;
+    let rowWithdrawalTaxes: number | undefined;
+    let rowUnallocatedSurplus: number | undefined;
 
     if (inWithdrawal) {
       // Withdrawal phase: no income, withdraw from accounts to fund spending
@@ -471,21 +744,73 @@ export function runProjection(
         contributionsByAccount[a.id] = 0;
       }
 
-      // Withdraw from accounts in order until annual spend is met
+      // Shortfall check: when retiring by age, did we hit FI? (compute once on first withdrawal year)
+      if (
+        !shortfallComputed &&
+        effectiveRetirementStartYear != null &&
+        (retireWhen === "AGE" || retireWhen === "EITHER") &&
+        year >= effectiveRetirementStartYear
+      ) {
+        shortfallComputed = true;
+        const investedAtRetirement = household.accounts.reduce(
+          (sum, a) => sum + (a.includedInFIAssets ? (balances[a.id] ?? 0) : 0),
+          0
+        );
+        const portfolioSupportsPerYear = investedAtRetirement * scenario.swr;
+        const targetSpendPerYear = annualRetirementSpend;
+        if (portfolioSupportsPerYear < targetSpendPerYear - RECONCILIATION_ROUNDING_THRESHOLD) {
+          fiNotMetAtRetirementAge = true;
+          shortfallData = { portfolioSupportsPerYear, targetSpendPerYear };
+          validationWarnings.push({
+            code: "FI_NOT_MET_AT_RETIREMENT_AGE",
+            message: `At retirement age (year ${year}), portfolio supports $${Math.round(portfolioSupportsPerYear).toLocaleString()}/yr at SWR; target spend is $${Math.round(targetSpendPerYear).toLocaleString()}/yr.`,
+          });
+        }
+      }
+
+      // Gross-up withdrawal: needNet = after-tax spending target.
+      // Taxable/Roth: 1:1 (no tax). Traditional: gross-up so net = needNet / (1 - t).
+      const needNet = annualRetirementSpend;
+      const traditionalRate = Math.min(
+        0.999,
+        scenario.traditionalWithdrawalsTaxRate ??
+          scenario.retirementEffectiveTaxRate ??
+          0
+      );
+      const rothRate = scenario.rothWithdrawalsTaxRate ?? 0;
+      const taxableRate = scenario.taxableWithdrawalsTaxRate ?? 0;
+
       const accessibleTypes = getAccessibleAccountTypes(year, people);
       const accessibleAccounts = orderedAccounts.filter((a) =>
         accessibleTypes.has(a.type)
       );
-      let remainingToWithdraw = annualRetirementSpend;
+      const accountById = new Map(household.accounts.map((a) => [a.id, a]));
+      let remainingNeedNet = needNet;
       const preGrowthBalances = { ...balances };
+
       for (const a of accessibleAccounts) {
-        if (remainingToWithdraw <= 0) break;
+        if (remainingNeedNet <= 0) break;
         const available = preGrowthBalances[a.id] ?? 0;
-        const withdraw = Math.min(available, remainingToWithdraw);
-        if (withdraw > 0) {
-          withdrawalByAccount[a.id] = withdraw;
-          preGrowthBalances[a.id] = available - withdraw;
-          remainingToWithdraw -= withdraw;
+        if (available <= 0) continue;
+
+        if (isPreTaxRetirement(a.type)) {
+          // Traditional: gross-up so net = remainingNeedNet
+          const grossNeeded = remainingNeedNet / (1 - traditionalRate);
+          const withdraw = Math.min(available, grossNeeded);
+          if (withdraw > 0) {
+            withdrawalByAccount[a.id] = withdraw;
+            preGrowthBalances[a.id] = available - withdraw;
+            const netFromWithdraw = withdraw * (1 - traditionalRate);
+            remainingNeedNet -= netFromWithdraw;
+          }
+        } else {
+          // Taxable, Roth, CASH: 1:1 net
+          const withdraw = Math.min(available, remainingNeedNet);
+          if (withdraw > 0) {
+            withdrawalByAccount[a.id] = withdraw;
+            preGrowthBalances[a.id] = available - withdraw;
+            remainingNeedNet -= withdraw;
+          }
         }
       }
       balances = preGrowthBalances;
@@ -494,25 +819,60 @@ export function runProjection(
         (s, v) => s + v,
         0
       );
-      const shortfall = annualRetirementSpend - totalWithdrawn;
-      if (shortfall > 0) withdrawalShortfall = shortfall;
+      if (remainingNeedNet > RECONCILIATION_ROUNDING_THRESHOLD) {
+        withdrawalShortfall = remainingNeedNet;
+      }
 
-      // Tax on Traditional account withdrawals (treated as taxable income)
-      const accountById = new Map(household.accounts.map((a) => [a.id, a]));
-      let taxableWithdrawal = 0;
+      // Split withdrawals by account type for per-type tax rates
+      let withdrawalsTraditional = 0;
+      let withdrawalsRoth = 0;
+      let withdrawalsTaxable = 0;
       for (const [accountId, amount] of Object.entries(withdrawalByAccount)) {
         const acct = accountById.get(accountId);
-        if (acct && isPreTaxRetirement(acct.type)) taxableWithdrawal += amount;
+        if (!acct) continue;
+        if (isPreTaxRetirement(acct.type)) withdrawalsTraditional += amount;
+        else if (ROTH_ACCOUNT_TYPES.has(acct.type)) withdrawalsRoth += amount;
+        else if (isTaxableBrokerage(acct.type)) withdrawalsTaxable += amount;
       }
-      const retirementRate = scenario.retirementEffectiveTaxRate ?? 0;
-      taxes = taxableWithdrawal * retirementRate;
+
+      const withdrawalTaxes =
+        withdrawalsTraditional * traditionalRate +
+        withdrawalsRoth * rothRate +
+        withdrawalsTaxable * taxableRate;
+      taxes = withdrawalTaxes;
+
+      rowWithdrawalsTraditional = withdrawalsTraditional;
+      rowWithdrawalsRoth = withdrawalsRoth;
+      rowWithdrawalsTaxable = withdrawalsTaxable;
+      rowWithdrawalTaxes = withdrawalTaxes;
+
+      // RETIREMENT_TAX_ZERO: traditional > 0 but taxes ≈ 0 indicates misconfiguration
+      if (
+        withdrawalsTraditional > RECONCILIATION_ROUNDING_THRESHOLD &&
+        withdrawalTaxes < RECONCILIATION_ROUNDING_THRESHOLD
+      ) {
+        validationErrors.push({
+          code: "RETIREMENT_TAX_ZERO",
+          message: `Traditional withdrawals ($${Math.round(withdrawalsTraditional).toLocaleString()}) in year ${year} but withdrawal taxes are ~$0. Set traditionalWithdrawalsTaxRate or retirementEffectiveTaxRate.`,
+        });
+      }
+
+      // Withdrawal phase reconciliation: otherNetInflows = totalWithdrawn; cashSavingsChange = 0
+      const otherNetInflows = totalWithdrawn;
+      const cashSavingsChange = 0;
+      reconciliationDelta =
+        0 +
+        otherNetInflows -
+        spending -
+        0 -
+        cashSavingsChange -
+        taxes;
     } else {
       // Accumulation phase: income, taxes, contributions, growth
-      gross = getGrossIncome(year);
+      const rsuBreakdown = getRsuVestBreakdown(household, year, scenario);
+      gross = getGrossIncome(year) + rsuBreakdown.vestValue;
       if (i === 0) firstYearIncome = gross;
 
-      const { takeHome: th, taxes: t } = getTakeHomeAndTaxes(gross);
-      taxes = t;
       spending =
         scenario.modelingMode === "NOMINAL" && i > 0
           ? currentAnnualSpend * Math.pow(1 + inflation, i)
@@ -521,7 +881,7 @@ export function runProjection(
       const payrollContrib = getPayrollContributions(year);
       let oopContrib = getOutOfPocketContributions(year);
       let savingsContrib = getMonthlySavingsContributions(year);
-      const rsuProceeds = getRsuVestProceeds(household, year);
+      const rsuProceeds = rsuBreakdown.byAccount;
 
       // Stop funding emergency fund goal account once it reaches target
       const efGoal = household.emergencyFundGoal;
@@ -534,6 +894,46 @@ export function runProjection(
         savingsContrib = { ...savingsContrib, [efGoal.accountId]: 0 };
       }
 
+      // Merge raw contributions, then cap at IRS limits (use capped for cashflow)
+      for (const a of household.accounts) {
+        contributionsByAccount[a.id] =
+          (payrollContrib[a.id] ?? 0) +
+          (oopContrib[a.id] ?? 0) +
+          (savingsContrib[a.id] ?? 0) +
+          (rsuProceeds[a.id] ?? 0);
+      }
+      const breakdown = getContributionsBreakdown(household, scenario, year);
+      const capped = capContributionsAtIRSLimits(
+        household,
+        scenario,
+        year,
+        contributionsByAccount,
+        breakdown
+      );
+      for (const a of household.accounts) {
+        contributionsByAccount[a.id] = capped[a.id] ?? 0;
+      }
+
+      // Payroll split from CAPPED contributions (for netToChecking / taxes)
+      const payrollSplit = getPayrollContributionsSplitFromCapped(
+        household,
+        capped,
+        breakdown
+      );
+      const {
+        employeePreTaxContribs,
+        employeeRothContribs,
+        employerContribs,
+      } = payrollSplit;
+
+      const { netToChecking, taxesPayroll } = getNetToCheckingAndTaxes(
+        gross,
+        employeePreTaxContribs,
+        employeeRothContribs
+      );
+      taxes = taxesPayroll;
+      const taxesAdditional = 0; // Phase 1: no taxes outside payroll
+
       const totalOopContrib = Object.values(oopContrib).reduce(
         (s, v) => s + v,
         0
@@ -543,15 +943,73 @@ export function runProjection(
         0
       );
 
-      netCashSurplus = th - spending - totalOopContrib - totalSavingsContrib;
+      netCashSurplus =
+        netToChecking - spending - totalOopContrib - totalSavingsContrib;
 
-      for (const a of household.accounts) {
-        contributionsByAccount[a.id] =
-          (payrollContrib[a.id] ?? 0) +
-          (oopContrib[a.id] ?? 0) +
-          (savingsContrib[a.id] ?? 0) +
-          (rsuProceeds[a.id] ?? 0);
+      // Events for this year (for reconciliation)
+      const yearEvents = (household.events ?? []).filter((e) => e.year === year);
+      const eventInflows = yearEvents
+        .filter((e) => e.kind === "INFLOW")
+        .reduce((s, e) => s + e.amount, 0);
+      const eventOutflows = yearEvents
+        .filter((e) => e.kind === "OUTFLOW")
+        .reduce((s, e) => s + e.amount, 0);
+
+      const rsuNetTotal = rsuBreakdown.netProceeds;
+      const otherNetInflows = rsuNetTotal + eventInflows;
+      const afterTaxContribs = totalOopContrib + totalSavingsContrib;
+      const cashSavingsChange =
+        netCashSurplus + rsuNetTotal + eventInflows - eventOutflows;
+      reconciliationDelta =
+        netToChecking +
+        otherNetInflows -
+        spending -
+        afterTaxContribs -
+        cashSavingsChange -
+        taxesAdditional;
+
+      // Unallocated Surplus: route positive delta to pseudo-expense (no FI impact)
+      const enableUnallocatedSurplusBalancing =
+        scenario.enableUnallocatedSurplusBalancing ?? true;
+      if (
+        enableUnallocatedSurplusBalancing &&
+        reconciliationDelta > RECONCILIATION_ROUNDING_THRESHOLD
+      ) {
+        rowUnallocatedSurplus = reconciliationDelta;
+        reconciliationDelta = 0;
+      } else {
+        // Optional: route overflow to taxable when autoFixOverflow enabled (legacy)
+        const autoFixOverflow = scenario.autoFixOverflow ?? false;
+        if (
+          autoFixOverflow &&
+          reconciliationDelta > RECONCILIATION_ROUNDING_THRESHOLD
+        ) {
+          const taxableAccount = household.accounts.find(
+            (a) => a.type === "TAXABLE" || a.type === "MONEY_MARKET"
+          );
+          if (taxableAccount) {
+            contributionsByAccount[taxableAccount.id] =
+              (contributionsByAccount[taxableAccount.id] ?? 0) +
+              reconciliationDelta;
+            reconciliationDelta = 0;
+            validationWarnings.push({
+              code: "AUTO_OVERFLOW_ROUTING_ENABLED",
+              message: `Overflow routed to ${taxableAccount.name} in year ${year}`,
+            });
+          }
+        }
       }
+
+      // Store new YearRow fields for accumulation phase
+      rowEmployeePreTaxContribs = employeePreTaxContribs;
+      rowEmployeeRothContribs = employeeRothContribs;
+      rowEmployerContribs = employerContribs;
+      rowNetToChecking = netToChecking;
+      rowTaxesPayroll = taxesPayroll;
+      rowTaxesAdditional = taxesAdditional;
+      rowRsuVestValue = rsuBreakdown.vestValue;
+      rowRsuWithholding = rsuBreakdown.withholding;
+      rowRsuNetProceeds = rsuBreakdown.netProceeds;
     }
 
     const growthByAccount: Record<string, number> = {};
@@ -611,6 +1069,20 @@ export function runProjection(
       netWorth,
       phase,
     };
+    if (rowEmployeePreTaxContribs != null) row.employeePreTaxContribs = rowEmployeePreTaxContribs;
+    if (rowEmployeeRothContribs != null) row.employeeRothContribs = rowEmployeeRothContribs;
+    if (rowEmployerContribs != null) row.employerContribs = rowEmployerContribs;
+    if (rowNetToChecking != null) row.netToChecking = rowNetToChecking;
+    if (rowTaxesPayroll != null) row.taxesPayroll = rowTaxesPayroll;
+    if (rowTaxesAdditional != null) row.taxesAdditional = rowTaxesAdditional;
+    if (rowRsuVestValue != null) row.rsuVestValue = rowRsuVestValue;
+    if (rowRsuWithholding != null) row.rsuWithholding = rowRsuWithholding;
+    if (rowRsuNetProceeds != null) row.rsuNetProceeds = rowRsuNetProceeds;
+    if (rowUnallocatedSurplus != null) row.unallocatedSurplus = rowUnallocatedSurplus;
+    if (rowWithdrawalsTraditional != null) row.withdrawalsTraditional = rowWithdrawalsTraditional;
+    if (rowWithdrawalsRoth != null) row.withdrawalsRoth = rowWithdrawalsRoth;
+    if (rowWithdrawalsTaxable != null) row.withdrawalsTaxable = rowWithdrawalsTaxable;
+    if (rowWithdrawalTaxes != null) row.withdrawalTaxes = rowWithdrawalTaxes;
     if (Object.keys(withdrawalByAccount).length > 0) {
       row.withdrawalByAccount = withdrawalByAccount;
     }
@@ -619,6 +1091,17 @@ export function runProjection(
     }
     if (phase === "withdrawal") {
       row.withdrawalPhaseTaxes = taxes;
+    }
+    if (reconciliationDelta != null) {
+      row.reconciliationDelta = reconciliationDelta;
+      if (
+        Math.abs(reconciliationDelta) > RECONCILIATION_ROUNDING_THRESHOLD
+      ) {
+        validationErrors.push({
+          code: "CASHFLOW_NOT_RECONCILED",
+          message: `Cashflow doesn't reconcile in year ${year} by $${Math.abs(reconciliationDelta).toFixed(2)} (delta: ${reconciliationDelta >= 0 ? "+" : ""}$${reconciliationDelta.toFixed(2)}). Check for double-counting or missing flows.`,
+        });
+      }
     }
     yearRows.push(row);
 
@@ -656,12 +1139,40 @@ export function runProjection(
   const savingsRate =
     firstYearIncome > 0 ? firstYearSaving / firstYearIncome : 0;
 
+  // Populate assumptions per data contract
+  validationAssumptions.push({
+    code: "INFLATION_DEFINITION",
+    message: `Inflation ${(inflation * 100).toFixed(1)}% used for salary growth when salaryGrowthMode=REAL and for real-return modeling.`,
+  });
+  validationAssumptions.push({
+    code: "TAX_MODEL_LEVEL",
+    message: "Tax model: effective rates (takeHome/annual). No bracket-level modeling.",
+  });
+  const enabledGrants = (household.equityGrants ?? []).filter((g) =>
+    isGrantEnabledForScenario(g.id, g, scenario)
+  );
+  if (enabledGrants.length > 0) {
+    const strategies = [...new Set(enabledGrants.map((g) => g.sellStrategy ?? "SELL_ALL"))];
+    validationAssumptions.push({
+      code: "RSU_SELL_STRATEGY",
+      message: `RSU: ${strategies.join(", ")}. Vest value = W2 income; net proceeds to destination. HOLD deposits to EMPLOYER_STOCK (account's includedInFIAssets controls FI).`,
+    });
+  }
+
   return {
     yearRows,
     fiNumber,
     fiYear,
     coastFiYear,
+    retirementStartYear: effectiveRetirementStartYear,
+    fiNotMetAtRetirementAge,
+    shortfallData,
     savingsRate,
+    validation: {
+      errors: validationErrors,
+      warnings: validationWarnings,
+      assumptions: validationAssumptions,
+    },
   };
 }
 
@@ -754,8 +1265,4 @@ function percentile(sorted: number[], p: number): number | null {
   if (lo === hi) return sorted[lo];
   const frac = idx - lo;
   return sorted[lo] * (1 - frac) + sorted[hi] * frac;
-}
-
-function growthFactorReal(nominalGrowth: number, inflation: number): number {
-  return (1 + nominalGrowth) / (1 + inflation) - 1;
 }

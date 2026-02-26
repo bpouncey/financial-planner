@@ -8,6 +8,7 @@ import type {
   ContributionOverride,
   Event,
   EventKind,
+  WithdrawalBucket,
 } from "@/lib/types/zod";
 import { EventSchema } from "@/lib/types/zod";
 import {
@@ -598,6 +599,222 @@ function EventOverridesSection({
   );
 }
 
+type EquityGrantOverride = { grantId: string; isEnabled?: boolean };
+
+function EquityGrantOverridesSection({
+  scenario,
+  household,
+  onUpdate,
+}: {
+  scenario: Scenario;
+  household: { people: { id: string; name: string }[]; equityGrants?: { id: string; ownerPersonId: string; startYear: number; vestingTable: { shares: number }[]; isEnabled?: boolean }[] };
+  onUpdate: (overrides: EquityGrantOverride[]) => void;
+}) {
+  const grants = household.equityGrants ?? [];
+  const overrides = scenario.equityGrantOverrides ?? [];
+
+  if (grants.length === 0) return null;
+
+  function getEffectiveEnabled(grantId: string): boolean {
+    const override = overrides.find((o) => o.grantId === grantId);
+    if (override?.isEnabled === false) return false;
+    if (override?.isEnabled === true) return true;
+    const grant = grants.find((g) => g.id === grantId);
+    return grant?.isEnabled !== false;
+  }
+
+  function handleToggle(grantId: string, enabled: boolean) {
+    const existing = overrides.find((o) => o.grantId === grantId);
+    const baseGrant = grants.find((g) => g.id === grantId);
+    const baseEnabled = baseGrant?.isEnabled !== false;
+    if (enabled === baseEnabled && existing == null) {
+      return;
+    }
+    const next = existing
+      ? overrides.map((o) =>
+          o.grantId === grantId ? { ...o, isEnabled: enabled } : o
+        )
+      : [...overrides, { grantId, isEnabled: enabled }];
+    onUpdate(next);
+  }
+
+  return (
+    <section className="space-y-4">
+      <h2 className="text-lg font-medium text-content">
+        RSU / equity grants
+      </h2>
+      <p className="text-sm text-content-muted">
+        Include or exclude RSU grants for this scenario. Base scenario often excludes RSUs for conservative FI.
+      </p>
+      <div className="space-y-3">
+        {grants.map((grant) => {
+          const owner = household.people.find((p) => p.id === grant.ownerPersonId);
+          const totalShares = grant.vestingTable.reduce((s, e) => s + e.shares, 0);
+          const enabled = getEffectiveEnabled(grant.id);
+          return (
+            <div
+              key={grant.id}
+              className="flex items-center justify-between rounded-md border border-border bg-surface/50 p-3"
+            >
+              <div>
+                <div className="text-sm font-medium text-content">
+                  RSU · {owner?.name ?? grant.ownerPersonId} · {grant.startYear}
+                </div>
+                <div className="text-xs text-content-muted">
+                  {totalShares.toLocaleString()} shares total
+                </div>
+              </div>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={(e) => handleToggle(grant.id, e.target.checked)}
+                  className="h-4 w-4 rounded border-border bg-surface text-accent focus:ring-accent"
+                />
+                <span className="text-sm">Include</span>
+              </label>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+const WITHDRAWAL_BUCKET_LABELS: Record<WithdrawalBucket, string> = {
+  TAXABLE: "Taxable (brokerage, cash)",
+  TAX_DEFERRED: "Tax-deferred (Traditional 401k, IRA, 403b, HSA)",
+  ROTH: "Roth (Roth 401k, Roth IRA)",
+};
+
+const DEFAULT_WITHDRAWAL_ORDER: WithdrawalBucket[] = ["TAXABLE", "TAX_DEFERRED", "ROTH"];
+
+function WithdrawalStrategySection({
+  scenario,
+  household,
+  onUpdate,
+}: {
+  scenario: Scenario;
+  household: { accounts: { id: string; name: string; type: string }[] };
+  onUpdate: (buckets: WithdrawalBucket[]) => void;
+}) {
+  const currentBuckets = scenario.withdrawalOrderBuckets ?? DEFAULT_WITHDRAWAL_ORDER;
+  const isDefault = 
+    currentBuckets.length === DEFAULT_WITHDRAWAL_ORDER.length &&
+    currentBuckets.every((b, i) => b === DEFAULT_WITHDRAWAL_ORDER[i]);
+
+  // Check which buckets have no matching accounts
+  const bucketAccountCounts = new Map<WithdrawalBucket, number>();
+  for (const acct of household.accounts) {
+    let bucket: WithdrawalBucket | null = null;
+    if (["TAXABLE", "MONEY_MARKET", "CASH", "CHECKING", "EMPLOYER_STOCK"].includes(acct.type)) {
+      bucket = "TAXABLE";
+    } else if (["TRADITIONAL_401K", "TRADITIONAL_IRA", "403B", "HSA"].includes(acct.type)) {
+      bucket = "TAX_DEFERRED";
+    } else if (["ROTH_401K", "ROTH_IRA"].includes(acct.type)) {
+      bucket = "ROTH";
+    }
+    if (bucket) {
+      bucketAccountCounts.set(bucket, (bucketAccountCounts.get(bucket) ?? 0) + 1);
+    }
+  }
+
+  const emptyBuckets = currentBuckets.filter(b => !bucketAccountCounts.get(b));
+
+  function handleReorder(fromIndex: number, direction: "up" | "down") {
+    const toIndex = direction === "up" ? fromIndex - 1 : fromIndex + 1;
+    if (toIndex < 0 || toIndex >= currentBuckets.length) return;
+    const next = [...currentBuckets];
+    [next[fromIndex], next[toIndex]] = [next[toIndex]!, next[fromIndex]!];
+    onUpdate(next);
+  }
+
+  function handleReset() {
+    onUpdate(DEFAULT_WITHDRAWAL_ORDER);
+  }
+
+  return (
+    <section className="space-y-4">
+      <h2 className="text-lg font-medium text-content">
+        Withdrawal strategy
+      </h2>
+      <p className="text-sm text-content-muted">
+        When retired, withdraw from accounts in this order. Buckets with no matching accounts will be skipped.
+      </p>
+      
+      {emptyBuckets.length > 0 && (
+        <div className="rounded-md border border-yellow-500/50 bg-yellow-50 p-3 dark:bg-yellow-900/20">
+          <p className="text-sm text-yellow-800 dark:text-yellow-200">
+            <strong>Warning:</strong> {emptyBuckets.map(b => WITHDRAWAL_BUCKET_LABELS[b]).join(", ")} {emptyBuckets.length === 1 ? "has" : "have"} no matching accounts and will be skipped.
+          </p>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {currentBuckets.map((bucket, i) => {
+          const count = bucketAccountCounts.get(bucket) ?? 0;
+          return (
+            <div
+              key={bucket}
+              className="flex items-center justify-between rounded-md border border-border bg-surface/50 p-3"
+            >
+              <div className="flex items-center gap-3">
+                <span className="flex h-6 w-6 items-center justify-center rounded bg-surface-elevated text-xs font-medium text-content">
+                  {i + 1}
+                </span>
+                <div>
+                  <div className="text-sm font-medium text-content">
+                    {WITHDRAWAL_BUCKET_LABELS[bucket]}
+                  </div>
+                  <div className="text-xs text-content-muted">
+                    {count === 0 ? "No matching accounts" : `${count} account${count === 1 ? "" : "s"}`}
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleReorder(i, "up")}
+                  disabled={i === 0}
+                  className="h-8 w-8 p-0"
+                  aria-label="Move up"
+                >
+                  ↑
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleReorder(i, "down")}
+                  disabled={i === currentBuckets.length - 1}
+                  className="h-8 w-8 p-0"
+                  aria-label="Move down"
+                >
+                  ↓
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {!isDefault && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleReset}
+          className="text-content-muted hover:text-content"
+        >
+          Reset to default order
+        </Button>
+      )}
+    </section>
+  );
+}
+
 export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
   const { household, updateScenario } = useHouseholdStore();
 
@@ -1026,6 +1243,24 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
         household={household}
         onUpdate={(events) =>
           updateScenario(scenario.id, { eventOverrides: events })
+        }
+      />
+
+      {/* Equity grant overrides */}
+      <EquityGrantOverridesSection
+        scenario={scenario}
+        household={household}
+        onUpdate={(overrides) =>
+          updateScenario(scenario.id, { equityGrantOverrides: overrides })
+        }
+      />
+
+      {/* Withdrawal strategy */}
+      <WithdrawalStrategySection
+        scenario={scenario}
+        household={household}
+        onUpdate={(buckets) =>
+          updateScenario(scenario.id, { withdrawalOrderBuckets: buckets })
         }
       />
     </form>

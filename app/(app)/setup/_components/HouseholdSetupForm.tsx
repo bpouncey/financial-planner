@@ -5,6 +5,7 @@ import { useHouseholdStore } from "@/stores/household";
 import { FormFieldWithHelp } from "@/components/ui/form-field-with-help";
 import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
+import { StepperInput } from "@/components/ui/stepper-input";
 import { HELP_HOUSEHOLD, HELP_PEOPLE, formatHelpEntry } from "@/lib/copy/help";
 import { PayrollContributionsForm } from "./contributions-form";
 
@@ -156,27 +157,21 @@ function PersonForm({ label, person, onUpdate, setPayrollInvesting }: PersonForm
           label="Salary growth (%)"
           helpContent={formatHelpEntry(HELP_PEOPLE.salaryGrowthRate)}
         >
-          <Input
+          <StepperInput
             id={`${person.id}-salary-growth`}
-            type="number"
             min={0}
-            max={50}
-            step={0.5}
-            value={
-              (person.income.salaryGrowthRate ?? 0) === 0
-                ? ""
-                : String((person.income.salaryGrowthRate ?? 0) * 100)
-            }
-            onChange={(e) => {
-              const v = parseFloat(e.target.value);
-              const rate = Number.isNaN(v) ? 0 : v / 100;
+            max={0.5}
+            step={0.005}
+            displayFactor={100}
+            value={person.income.salaryGrowthRate ?? 0}
+            onChange={(rate) =>
               onUpdate({
                 income: {
                   ...person.income,
                   salaryGrowthRate: rate,
                 },
-              });
-            }}
+              })
+            }
             placeholder="0"
           />
         </FormFieldWithHelp>
