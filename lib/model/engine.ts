@@ -15,6 +15,7 @@ import type {
 import {
   PENALTY_FREE_AGE_TRADITIONAL,
   PENALTY_FREE_AGE_HSA,
+  DEFAULT_TAXABLE_WITHDRAWAL_TAX_RATE,
 } from "@/lib/model/constants";
 import {
   capContributionsAtIRSLimits,
@@ -89,24 +90,8 @@ function sharePriceForYear(
   return fixedPrice * Math.pow(1 + growthRate, year - startYear);
 }
 
-/** Return accounts ordered for withdrawal (by scenario.withdrawalOrder) */
-function getAccountsInWithdrawalOrder(
-  accounts: Account[],
-  withdrawalOrder: string[]
-): Account[] {
-  const byType = new Map<string, Account[]>();
-  for (const a of accounts) {
-    const list = byType.get(a.type) ?? [];
-    list.push(a);
-    byType.set(a.type, list);
-  }
-  const result: Account[] = [];
-  for (const type of withdrawalOrder) {
-    const list = byType.get(type) ?? [];
-    result.push(...list);
-  }
-  return result;
-}
+/** Default bucket-based withdrawal order. ROTH bucket includes both ROTH_401K and ROTH_IRA. */
+const DEFAULT_WITHDRAWAL_BUCKETS = ["TAXABLE", "TAX_DEFERRED", "ROTH"] as const;
 
 /** Map account type to withdrawal bucket */
 function getWithdrawalBucket(accountType: string): string | null {
@@ -550,10 +535,17 @@ export function runProjection(
     const growthOverride = scenario.salaryGrowthOverride;
     const salaryGrowth =
       growthOverride ?? person.income.salaryGrowthRate ?? 0;
-    const growthFactor =
-      salaryGrowthMode === "REAL"
-        ? Math.pow(1 + inflation, yearsFromStart)
-        : Math.pow(1 + salaryGrowth, yearsFromStart);
+    const salaryGrowthIsReal = person.income.salaryGrowthIsReal ?? true;
+    let growthFactor: number;
+    if (salaryGrowthMode === "NOMINAL") {
+      growthFactor = Math.pow(1 + salaryGrowth, yearsFromStart);
+    } else if (salaryGrowthMode === "REAL" && salaryGrowthIsReal) {
+      // REAL mode + salaryGrowthIsReal=true: salaryGrowth is real growth (no inflation conversion)
+      growthFactor = Math.pow(1 + salaryGrowth, yearsFromStart);
+    } else {
+      // REAL mode + salaryGrowthIsReal=false: real salary constant (inflation only)
+      growthFactor = Math.pow(1 + inflation, yearsFromStart);
+    }
     let income = person.income.baseSalaryAnnual * growthFactor;
     if (person.income.bonusAnnual) income += person.income.bonusAnnual;
     if (person.income.bonusPercent)
@@ -618,47 +610,67 @@ export function runProjection(
   const netToCheckingOverride = scenario.netToCheckingOverride;
 
   /**
-   * Compute netToChecking and taxes per takeHomeDefinition.
-   * NET_TO_CHECKING: takeHomeAnnual is net to checking; do not subtract payroll again.
-   * AFTER_TAX_ONLY: takeHomeAnnual is after-tax before contributions; netToChecking = takeHome - employeePreTax - employeeRoth.
-   * OVERRIDE: use netToCheckingOverride.
+   * Compute netToChecking and taxes.
+   * Gross-driven (effectiveTaxRate): netToChecking = gross - taxes - employeePreTax - employeeRoth - payrollDeductions.
+   * Take-home-driven (takeHomeAnnual): use takeHomeDefinition to interpret takeHomeAnnual.
+   * OVERRIDE: use netToCheckingOverride when set.
    */
   const getNetToCheckingAndTaxes = (
     gross: number,
     employeePreTaxContribs: number,
-    employeeRothContribs: number
+    employeeRothContribs: number,
+    payrollDeductions: number
   ): { netToChecking: number; taxesPayroll: number } => {
-    // Resolve "after-tax" value: user input or computed from effectiveRate
-    let afterTaxPay: number;
-    if (takeHomeInput != null) {
-      afterTaxPay = takeHomeInput;
-    } else if (effectiveRate != null) {
-      afterTaxPay = gross * (1 - effectiveRate);
-    } else {
-      afterTaxPay = gross; // Fallback: no taxes
-    }
-
     let netToChecking: number;
     if (takeHomeDefinition === "OVERRIDE" && netToCheckingOverride != null) {
       netToChecking = netToCheckingOverride;
-    } else if (takeHomeDefinition === "NET_TO_CHECKING") {
-      netToChecking = afterTaxPay;
+    } else if (effectiveRate != null) {
+      // Gross is source of truth: derive net from effectiveTaxRate
+      netToChecking =
+        gross * (1 - effectiveRate) -
+        employeePreTaxContribs -
+        employeeRothContribs -
+        payrollDeductions;
     } else {
-      // AFTER_TAX_ONLY: subtract payroll contributions from after-tax pay
-      netToChecking = afterTaxPay - employeePreTaxContribs - employeeRothContribs;
+      // Take-home-driven: resolve afterTaxPay from takeHomeInput or fallback
+      // When takeHomeInput is null, fallback already subtracts payrollDeductions
+      const afterTaxPay =
+        takeHomeInput != null ? takeHomeInput : gross - payrollDeductions;
+      if (takeHomeDefinition === "NET_TO_CHECKING") {
+        // When user provides takeHomeAnnual, interpret as after-tax/401k; subtract payroll deductions to get net-to-checking
+        netToChecking =
+          takeHomeInput != null ? afterTaxPay - payrollDeductions : afterTaxPay;
+      } else {
+        // AFTER_TAX_ONLY: subtract payroll contributions; subtract payroll deductions when user-provided
+        netToChecking =
+          takeHomeInput != null
+            ? afterTaxPay -
+              employeePreTaxContribs -
+              employeeRothContribs -
+              payrollDeductions
+            : afterTaxPay - employeePreTaxContribs - employeeRothContribs;
+      }
     }
 
-    // taxesPayroll = gross - netToChecking - employeePreTax - employeeRoth
-    const taxesPayroll = gross - netToChecking - employeePreTaxContribs - employeeRothContribs;
+    // taxesPayroll = gross - netToChecking - employeePreTax - employeeRoth - payrollDeductions
+    // (payroll deductions are spending, not taxes)
+    const taxesPayroll =
+      gross -
+      netToChecking -
+      employeePreTaxContribs -
+      employeeRothContribs -
+      payrollDeductions;
 
     return { netToChecking, taxesPayroll };
   };
 
   const currentMonthlySpend = scenario.currentMonthlySpend ?? 6353;
-  const payrollDeductions = people.reduce(
-    (s, p) => s + (p.payroll.payrollDeductionsSpending ?? 0),
-    0
-  );
+  const payrollDeductions =
+    scenario.payrollDeductionsAnnual ??
+    people.reduce(
+      (s, p) => s + (p.payroll.payrollDeductionsSpending ?? 0),
+      0
+    );
   const currentAnnualSpend = currentMonthlySpend * 12 + payrollDeductions;
 
   const yearRows: YearRow[] = [];
@@ -676,16 +688,14 @@ export function runProjection(
   let firstYearIncome = 0;
   let firstYearSaving = 0;
 
-  // Prefer bucket-based withdrawal order if present; fall back to legacy withdrawalOrder
-  const orderedAccounts = scenario.withdrawalOrderBuckets
-    ? getAccountsInWithdrawalOrderByBuckets(
-        household.accounts,
-        scenario.withdrawalOrderBuckets
-      )
-    : getAccountsInWithdrawalOrder(
-        household.accounts,
-        scenario.withdrawalOrder ?? ["TAXABLE", "MONEY_MARKET", "TRADITIONAL", "403B", "ROTH"]
-      );
+  // Always use bucket-based withdrawal order (TAXABLE → TAX_DEFERRED → ROTH).
+  // ROTH bucket includes both ROTH_401K and ROTH_IRA.
+  const withdrawalBuckets =
+    scenario.withdrawalOrderBuckets ?? [...DEFAULT_WITHDRAWAL_BUCKETS];
+  const orderedAccounts = getAccountsInWithdrawalOrderByBuckets(
+    household.accounts,
+    withdrawalBuckets
+  );
 
   const retireWhen = scenario.retireWhen ?? "EITHER";
   const firstPerson = people[0];
@@ -763,8 +773,11 @@ export function runProjection(
 
     if (inWithdrawal) {
       // Withdrawal phase: no income, withdraw from accounts to fund spending
+      // NOMINAL mode: spending inflates each year; REAL mode: constant (today's dollars)
+      const annualSpendThisYear =
+        isReal ? annualRetirementSpend : annualRetirementSpend * Math.pow(1 + inflation, i);
       gross = 0;
-      spending = annualRetirementSpend;
+      spending = annualSpendThisYear;
       netCashSurplus = -spending;
       for (const a of household.accounts) {
         contributionsByAccount[a.id] = 0;
@@ -783,7 +796,7 @@ export function runProjection(
           0
         );
         const portfolioSupportsPerYear = investedAtRetirement * scenario.swr;
-        const targetSpendPerYear = annualRetirementSpend;
+        const targetSpendPerYear = annualSpendThisYear;
         if (portfolioSupportsPerYear < targetSpendPerYear - RECONCILIATION_ROUNDING_THRESHOLD) {
           fiNotMetAtRetirementAge = true;
           shortfallData = { portfolioSupportsPerYear, targetSpendPerYear };
@@ -796,7 +809,7 @@ export function runProjection(
 
       // Gross-up withdrawal: needNet = after-tax spending target.
       // Taxable/Roth: 1:1 (no tax). Traditional: gross-up so net = needNet / (1 - t).
-      const needNet = annualRetirementSpend;
+      const needNet = annualSpendThisYear;
       const traditionalRate = Math.min(
         0.999,
         scenario.traditionalWithdrawalsTaxRate ??
@@ -804,7 +817,8 @@ export function runProjection(
           0
       );
       const rothRate = scenario.rothWithdrawalsTaxRate ?? 0;
-      const taxableRate = scenario.taxableWithdrawalsTaxRate ?? 0;
+      const taxableRate =
+        scenario.taxableWithdrawalsTaxRate ?? DEFAULT_TAXABLE_WITHDRAWAL_TAX_RATE;
 
       const accessibleTypes = getAccessibleAccountTypes(year, people);
       const accessibleAccounts = orderedAccounts.filter((a) =>
@@ -829,8 +843,19 @@ export function runProjection(
             const netFromWithdraw = withdraw * (1 - traditionalRate);
             remainingNeedNet -= netFromWithdraw;
           }
+        } else if (isTaxableBrokerage(a.type) && taxableRate > 0) {
+          // Taxable with tax: gross-up so net = remainingNeedNet
+          const safeTaxableRate = Math.min(0.999, taxableRate);
+          const grossNeeded = remainingNeedNet / (1 - safeTaxableRate);
+          const withdraw = Math.min(available, grossNeeded);
+          if (withdraw > 0) {
+            withdrawalByAccount[a.id] = withdraw;
+            preGrowthBalances[a.id] = available - withdraw;
+            const netFromWithdraw = withdraw * (1 - safeTaxableRate);
+            remainingNeedNet -= netFromWithdraw;
+          }
         } else {
-          // Taxable, Roth, CASH: 1:1 net
+          // Roth, CASH, or taxable with rate 0: 1:1 net
           const withdraw = Math.min(available, remainingNeedNet);
           if (withdraw > 0) {
             withdrawalByAccount[a.id] = withdraw;
@@ -958,7 +983,8 @@ export function runProjection(
       const { netToChecking, taxesPayroll } = getNetToCheckingAndTaxes(
         gross,
         employeePreTaxContribs,
-        employeeRothContribs
+        employeeRothContribs,
+        payrollDeductions
       );
       taxes = taxesPayroll;
       const taxesAdditional = 0; // Phase 1: no taxes outside payroll

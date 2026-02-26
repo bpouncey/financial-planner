@@ -85,7 +85,7 @@ function createBaseScenario(overrides?: Partial<Scenario>): Scenario {
     salaryGrowthOverride: null,
     salaryGrowthMode: "REAL",
     includeEmployerMatch: false,
-    withdrawalOrder: ["TAXABLE", "TRADITIONAL_401K", "ROTH_IRA"],
+    withdrawalOrder: ["TAXABLE", "TRADITIONAL_401K", "ROTH_401K", "ROTH_IRA"],
     ...overrides,
   };
 }
@@ -325,6 +325,217 @@ describe("Engine", () => {
         expect(["accumulation", "withdrawal"]).toContain(b!.phase);
         expect(typeof b!.delta).toBe("number");
       }
+    });
+  });
+
+  describe("Phase 2 — Gross-driven cashflow", () => {
+    const tradId = "trad";
+
+    it("salary growth changes take-home proportionally when using effectiveTaxRate", () => {
+      const baseSalary = 200_000;
+      const effectiveRate = 0.25;
+      const householdNoGrowth = createBaseHousehold({
+        salary: baseSalary,
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            income: { baseSalaryAnnual: baseSalary, salaryGrowthRate: 0, salaryGrowthIsReal: true },
+            payroll: { payrollInvesting: [], payrollDeductionsSpending: 0 },
+          },
+        ],
+      });
+      const householdWithGrowth = createBaseHousehold({
+        salary: baseSalary,
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            income: { baseSalaryAnnual: baseSalary, salaryGrowthRate: 0.05, salaryGrowthIsReal: true },
+            payroll: { payrollInvesting: [], payrollDeductionsSpending: 0 },
+          },
+        ],
+      });
+      const scenario = createBaseScenario({
+        effectiveTaxRate: effectiveRate,
+        takeHomeAnnual: null,
+        takeHomeDefinition: "NET_TO_CHECKING",
+        salaryGrowthMode: "NOMINAL",
+      });
+
+      const resultNoGrowth = runProjection(householdNoGrowth, scenario, 3);
+      const resultWithGrowth = runProjection(householdWithGrowth, scenario, 3);
+
+      const y1No = resultNoGrowth.yearRows[0];
+      const y1With = resultWithGrowth.yearRows[0];
+      const y2No = resultNoGrowth.yearRows[1];
+      const y2With = resultWithGrowth.yearRows[1];
+
+      expect(y1No.grossIncome).toBe(baseSalary);
+      expect(y1With.grossIncome).toBe(baseSalary);
+      expect(y2No.grossIncome).toBe(baseSalary);
+      expect(y2With.grossIncome).toBe(baseSalary * 1.05);
+
+      const expectedNetY1 = baseSalary * (1 - effectiveRate);
+      expect(y1No.netToChecking).toBeCloseTo(expectedNetY1, 0);
+      expect(y1With.netToChecking).toBeCloseTo(expectedNetY1, 0);
+
+      const expectedNetY2No = baseSalary * (1 - effectiveRate);
+      const expectedNetY2With = baseSalary * 1.05 * (1 - effectiveRate);
+      expect(y2No.netToChecking).toBeCloseTo(expectedNetY2No, 0);
+      expect(y2With.netToChecking).toBeCloseTo(expectedNetY2With, 0);
+
+      expect(y2With.netToChecking / y2No.netToChecking).toBeCloseTo(1.05, 4);
+    });
+
+    it("401k contribution changes take-home in correct direction", () => {
+      const householdLowContrib = createBaseHousehold({
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            income: { baseSalaryAnnual: 200_000, salaryGrowthRate: 0, salaryGrowthIsReal: true },
+            payroll: {
+              payrollInvesting: [{ accountId: tradId, amountAnnual: 5_000 }],
+              payrollDeductionsSpending: 0,
+            },
+          },
+        ],
+        accounts: [
+          { id: tradId, name: "401k", type: "TRADITIONAL_401K", owner: "PERSON_A", startingBalance: 0, includedInFIAssets: true },
+        ],
+      });
+      const householdHighContrib = createBaseHousehold({
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            income: { baseSalaryAnnual: 200_000, salaryGrowthRate: 0, salaryGrowthIsReal: true },
+            payroll: {
+              payrollInvesting: [{ accountId: tradId, amountAnnual: 20_000 }],
+              payrollDeductionsSpending: 0,
+            },
+          },
+        ],
+        accounts: [
+          { id: tradId, name: "401k", type: "TRADITIONAL_401K", owner: "PERSON_A", startingBalance: 0, includedInFIAssets: true },
+        ],
+      });
+      const scenario = createBaseScenario({
+        effectiveTaxRate: 0.25,
+        takeHomeAnnual: null,
+        takeHomeDefinition: "AFTER_TAX_ONLY",
+      });
+
+      const resultLow = runProjection(householdLowContrib, scenario, 1);
+      const resultHigh = runProjection(householdHighContrib, scenario, 1);
+
+      const netLow = resultLow.yearRows[0].netToChecking;
+      const netHigh = resultHigh.yearRows[0].netToChecking;
+
+      expect(netHigh).toBeLessThan(netLow);
+      expect(netLow - netHigh).toBeCloseTo(15_000, 0);
+    });
+
+    it("employer match increases retirement balances but does not change take-home", () => {
+      const household = createBaseHousehold({
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            income: { baseSalaryAnnual: 200_000, salaryGrowthRate: 0, salaryGrowthIsReal: true },
+            payroll: {
+              payrollInvesting: [
+                { accountId: tradId, amountAnnual: 10_000, contributorType: "employee" },
+                { accountId: tradId, amountAnnual: 5_000, contributorType: "employer" },
+              ],
+              payrollDeductionsSpending: 0,
+            },
+          },
+        ],
+        accounts: [
+          { id: tradId, name: "401k", type: "TRADITIONAL_401K", owner: "PERSON_A", startingBalance: 0, includedInFIAssets: true },
+        ],
+      });
+      const scenarioMatchOff = createBaseScenario({ includeEmployerMatch: false });
+      const scenarioMatchOn = createBaseScenario({ includeEmployerMatch: true });
+
+      const resultOff = runProjection(household, scenarioMatchOff, 1);
+      const resultOn = runProjection(household, scenarioMatchOn, 1);
+
+      expect(resultOff.yearRows[0].netToChecking).toBe(resultOn.yearRows[0].netToChecking);
+      expect(resultOn.yearRows[0].contributionsByAccount[tradId]).toBe(15_000);
+      expect(resultOff.yearRows[0].contributionsByAccount[tradId]).toBe(10_000);
+    });
+
+    it("payrollDeductions reduces netToChecking when effectiveTaxRate path used", () => {
+      const householdNoDeductions = createBaseHousehold({
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            income: { baseSalaryAnnual: 200_000, salaryGrowthRate: 0, salaryGrowthIsReal: true },
+            payroll: { payrollInvesting: [], payrollDeductionsSpending: 0 },
+          },
+        ],
+      });
+      const householdWithDeductions = createBaseHousehold({
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            income: { baseSalaryAnnual: 200_000, salaryGrowthRate: 0, salaryGrowthIsReal: true },
+            payroll: { payrollInvesting: [], payrollDeductionsSpending: 12_000 },
+          },
+        ],
+      });
+      const scenario = createBaseScenario({
+        effectiveTaxRate: 0.25,
+        takeHomeAnnual: null,
+        takeHomeDefinition: "NET_TO_CHECKING",
+      });
+
+      const resultNoDed = runProjection(householdNoDeductions, scenario, 1);
+      const resultWithDed = runProjection(householdWithDeductions, scenario, 1);
+
+      const netNoDed = resultNoDed.yearRows[0].netToChecking;
+      const netWithDed = resultWithDed.yearRows[0].netToChecking;
+
+      expect(netWithDed).toBeLessThan(netNoDed);
+      expect(netNoDed - netWithDed).toBeCloseTo(12_000, 0);
+    });
+
+    it("payrollDeductionsAnnual reduces netToChecking when takeHomeAnnual path used", () => {
+      const household = createBaseHousehold({
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            income: { baseSalaryAnnual: 200_000, salaryGrowthRate: 0, salaryGrowthIsReal: true },
+            payroll: { payrollInvesting: [], payrollDeductionsSpending: 0 },
+          },
+        ],
+      });
+      const scenarioNoDed = createBaseScenario({
+        effectiveTaxRate: null,
+        takeHomeAnnual: 150_000,
+        takeHomeDefinition: "NET_TO_CHECKING",
+        payrollDeductionsAnnual: undefined,
+      });
+      const scenarioWithDed = createBaseScenario({
+        effectiveTaxRate: null,
+        takeHomeAnnual: 150_000,
+        takeHomeDefinition: "NET_TO_CHECKING",
+        payrollDeductionsAnnual: 6_000,
+      });
+
+      const resultNoDed = runProjection(household, scenarioNoDed, 1);
+      const resultWithDed = runProjection(household, scenarioWithDed, 1);
+
+      expect(resultNoDed.yearRows[0].netToChecking).toBeCloseTo(150_000, 0);
+      expect(resultWithDed.yearRows[0].netToChecking).toBeCloseTo(144_000, 0);
+      expect(resultNoDed.yearRows[0].netToChecking! - resultWithDed.yearRows[0].netToChecking!).toBeCloseTo(6_000, 0);
+      expect(resultWithDed.validation.errors).toHaveLength(0);
     });
   });
 
@@ -864,6 +1075,7 @@ describe("Engine", () => {
         retirementMonthlySpend: 5000, // $60k/year
         swr: 0.03,
         retirementStartYear: START_YEAR,
+        taxableWithdrawalsTaxRate: 0,
         takeHomeAnnual: 0,
         currentMonthlySpend: 0,
       });
@@ -873,7 +1085,7 @@ describe("Engine", () => {
 
       expect(y1.phase).toBe("withdrawal");
       expect(y1.withdrawalByAccount).toBeDefined();
-      // Taxable has 200k; we need 60k. All 60k from taxable.
+      // Taxable has 200k; we need 60k. All 60k from taxable (no tax on taxable).
       expect(y1.withdrawalByAccount![taxableId]).toBe(60_000);
       expect(y1.withdrawalByAccount![tradId]).toBeUndefined();
       expect(y1.withdrawalByAccount![rothId]).toBeUndefined();
@@ -912,6 +1124,7 @@ describe("Engine", () => {
         retirementMonthlySpend: 5000, // $60k/year
         swr: 0.03,
         retirementStartYear: START_YEAR,
+        taxableWithdrawalsTaxRate: 0,
         takeHomeAnnual: 0,
         currentMonthlySpend: 0,
       });
@@ -1061,6 +1274,7 @@ describe("Engine", () => {
         swr: 0.03,
         retirementStartYear: START_YEAR,
         retirementEffectiveTaxRate: 0.2, // 20% on Traditional withdrawals
+        taxableWithdrawalsTaxRate: 0,
         takeHomeAnnual: 0,
         currentMonthlySpend: 0,
       });
@@ -1113,6 +1327,7 @@ describe("Engine", () => {
         swr: 0.03,
         retirementStartYear: START_YEAR,
         retirementEffectiveTaxRate: 0.2,
+        taxableWithdrawalsTaxRate: 0,
         takeHomeAnnual: 0,
         currentMonthlySpend: 0,
       });
@@ -1120,7 +1335,7 @@ describe("Engine", () => {
       const result = runProjection(household, scenario, 3);
       const y1 = result.yearRows[0];
 
-      // All $60k from taxable; no Traditional withdrawal
+      // All $60k from taxable; no Traditional withdrawal (no tax on taxable)
       expect(y1.withdrawalByAccount![taxableId]).toBe(60_000);
       expect(y1.withdrawalByAccount![tradId]).toBeUndefined();
 
@@ -1210,7 +1425,8 @@ describe("Engine", () => {
         swr: 0.03,
         retirementStartYear: START_YEAR,
         retirementEffectiveTaxRate: 0.2,
-        withdrawalOrder: ["TAXABLE", "TRADITIONAL_401K", "ROTH_IRA"],
+        taxableWithdrawalsTaxRate: 0,
+        withdrawalOrder: ["TAXABLE", "TRADITIONAL_401K", "ROTH_401K", "ROTH_IRA"],
         takeHomeAnnual: 0,
         currentMonthlySpend: 0,
       });
@@ -1263,6 +1479,52 @@ describe("Engine", () => {
       // Gross-up: need 96k net; gross = 96k / (1 - 0.25) = 128k
       expect(y1.withdrawalsTraditional).toBe(128_000);
       expect(y1.withdrawalTaxes).toBe(128_000 * 0.25); // uses 25%, not 20%
+    });
+
+    it("Phase 1: taxableWithdrawalsTaxRate 0.10 shows reduced net vs gross, withdrawal taxes > 0", () => {
+      const household = createBaseHousehold({
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            birthYear: 1965,
+            income: { baseSalaryAnnual: 0, salaryGrowthRate: 0, salaryGrowthIsReal: false },
+            payroll: { payrollInvesting: [], payrollDeductionsSpending: 0 },
+          },
+        ],
+        accounts: [
+          {
+            id: taxableId,
+            name: "Brokerage",
+            type: "TAXABLE",
+            owner: "PERSON_A",
+            startingBalance: 100_000,
+            includedInFIAssets: true,
+          },
+        ],
+      });
+      const scenario = createBaseScenario({
+        retirementMonthlySpend: 5000, // $60k/year
+        swr: 0.03,
+        retirementStartYear: START_YEAR,
+        taxableWithdrawalsTaxRate: 0.10,
+        withdrawalOrder: ["TAXABLE"],
+        takeHomeAnnual: 0,
+        currentMonthlySpend: 0,
+      });
+
+      const result = runProjection(household, scenario, 3);
+      const y1 = result.yearRows[0];
+
+      // Gross-up: need 60k net from taxable; gross = 60k / (1 - 0.10) ≈ 66,666.67
+      const grossNeeded = 60_000 / (1 - 0.1);
+      expect(y1.withdrawalsTaxable).toBeCloseTo(grossNeeded, -2);
+      expect(y1.withdrawalsTaxable).toBeGreaterThan(60_000);
+      // Net from taxable = gross * (1 - 0.10) = 60k
+      expect(y1.withdrawalsTaxable! * (1 - 0.1)).toBeCloseTo(60_000, -2);
+      // Withdrawal taxes > 0; net < gross
+      expect(y1.withdrawalTaxes).toBeGreaterThan(0);
+      expect(y1.withdrawalTaxes).toBeCloseTo(y1.withdrawalsTaxable! * 0.1, -2);
     });
 
     it("Phase 5: RETIREMENT_TAX_ZERO when traditional > 0 but no rate set", () => {
@@ -1336,7 +1598,7 @@ describe("Engine", () => {
         swr: 0.03,
         retirementStartYear: START_YEAR,
         retirementEffectiveTaxRate: 0.2,
-        withdrawalOrder: ["TAXABLE", "TRADITIONAL_401K", "403B", "ROTH_IRA"],
+        withdrawalOrder: ["TAXABLE", "TRADITIONAL_401K", "403B", "ROTH_401K", "ROTH_IRA"],
         takeHomeAnnual: 0,
         currentMonthlySpend: 0,
       });
@@ -1393,6 +1655,7 @@ describe("Engine", () => {
         retirementMonthlySpend: 5000,
         swr: 0.03,
         retirementStartYear: START_YEAR,
+        taxableWithdrawalsTaxRate: 0,
         takeHomeAnnual: 0,
         currentMonthlySpend: 0,
       });
@@ -1552,7 +1815,8 @@ describe("Engine", () => {
         retirementMonthlySpend: 5000,
         swr: 0.03,
         retirementStartYear: START_YEAR,
-        withdrawalOrder: ["TAXABLE", "TRADITIONAL_401K", "403B", "ROTH_IRA", "HSA"],
+        taxableWithdrawalsTaxRate: 0,
+        withdrawalOrder: ["TAXABLE", "TRADITIONAL_401K", "403B", "ROTH_401K", "ROTH_IRA", "HSA"],
         takeHomeAnnual: 0,
         currentMonthlySpend: 0,
       });
@@ -1600,7 +1864,8 @@ describe("Engine", () => {
         retirementMonthlySpend: 5000,
         swr: 0.03,
         retirementStartYear: START_YEAR,
-        withdrawalOrder: ["TAXABLE", "TRADITIONAL_401K", "403B", "ROTH_IRA", "HSA"],
+        taxableWithdrawalsTaxRate: 0,
+        withdrawalOrder: ["TAXABLE", "TRADITIONAL_401K", "403B", "ROTH_401K", "ROTH_IRA", "HSA"],
         takeHomeAnnual: 0,
         currentMonthlySpend: 0,
       });
@@ -2687,6 +2952,39 @@ describe("Engine", () => {
       expect(y3.spending).toBeCloseTo(baseAnnualSpend * Math.pow(1 + inf, 2), 0);
     });
 
+    it("withdrawal-phase spending inflates by inflation rate in NOMINAL mode", () => {
+      const household = createBaseHousehold({
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            income: { baseSalaryAnnual: 0, salaryGrowthRate: 0, salaryGrowthIsReal: false },
+            payroll: { payrollInvesting: [], payrollDeductionsSpending: 0 },
+          },
+        ],
+      });
+      const scenario = createBaseScenario({
+        modelingMode: "NOMINAL",
+        retirementMonthlySpend: 8000,
+        retirementStartYear: START_YEAR,
+        takeHomeAnnual: 0,
+        currentMonthlySpend: 0,
+      });
+      const result = runProjection(household, scenario, 5);
+
+      const baseAnnualSpend = scenario.retirementMonthlySpend * 12;
+      const inf = scenario.inflation;
+
+      const [y1, y2, y3] = result.yearRows;
+      expect(y1.phase).toBe("withdrawal");
+      // i=0: no inflation applied yet
+      expect(y1.spending).toBeCloseTo(baseAnnualSpend, 0);
+      // i=1: first inflation step
+      expect(y2.spending).toBeCloseTo(baseAnnualSpend * (1 + inf), 0);
+      // i=2: compounded
+      expect(y3.spending).toBeCloseTo(baseAnnualSpend * Math.pow(1 + inf, 2), 0);
+    });
+
     it("nominal return (not real) is applied to accounts in NOMINAL mode", () => {
       // Zero-contribution, zero-income setup so growth is the only variable
       const household = createBaseHousehold({
@@ -2745,6 +3043,57 @@ describe("Engine", () => {
       expect(nominalResult.yearRows[0].investedAssets).toBeGreaterThan(
         realResult.yearRows[0].investedAssets
       );
+    });
+
+    it("mode invariance: REAL and NOMINAL produce equivalent real outcomes when inputs transformed (growth-only)", () => {
+      // Growth-only: no income, no spending. REAL uses real return; NOMINAL uses nominal return.
+      // nominalAssets(t) / (1+inf)^t should equal realAssets(t) (both in real dollars).
+      const household = createBaseHousehold({
+        startInvested: 100_000,
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            income: { baseSalaryAnnual: 0, salaryGrowthRate: 0, salaryGrowthIsReal: false },
+            payroll: { payrollInvesting: [], payrollDeductionsSpending: 0 },
+          },
+        ],
+      });
+      const inflation = 0.03;
+      const nominalReturn = 0.07;
+      const realResult = runProjection(
+        household,
+        createBaseScenario({
+          modelingMode: "REAL",
+          nominalReturn,
+          inflation,
+          takeHomeAnnual: 0,
+          currentMonthlySpend: 0,
+        }),
+        10
+      );
+      const nominalResult = runProjection(
+        household,
+        createBaseScenario({
+          modelingMode: "NOMINAL",
+          nominalReturn,
+          inflation,
+          takeHomeAnnual: 0,
+          currentMonthlySpend: 0,
+        }),
+        10
+      );
+
+      for (let i = 0; i < realResult.yearRows.length; i++) {
+        const realRow = realResult.yearRows[i];
+        const nominalRow = nominalResult.yearRows[i];
+        const yearsFromStart = realRow.year - START_YEAR;
+        // End-of-year nominal dollars: deflate by (1+inf)^(yearsFromStart+1) to get real (start-of-projection) dollars
+        const inflationYears = yearsFromStart + 1;
+        const nominalInRealTerms =
+          nominalRow.investedAssets / Math.pow(1 + inflation, inflationYears);
+        expect(nominalInRealTerms).toBeCloseTo(realRow.investedAssets, 0);
+      }
     });
   });
 
@@ -3435,7 +3784,7 @@ describe("Engine", () => {
     });
 
     it("salaryGrowthMode REAL: nominal salary grows by inflation (real salary constant)", () => {
-      // REAL mode: nominal = base * (1+inflation)^years; real purchasing power stays constant
+      // REAL mode + salaryGrowthIsReal=false: nominal = base * (1+inflation)^years; real purchasing power stays constant
       const household = createBaseHousehold({
         people: [
           {
@@ -3444,7 +3793,7 @@ describe("Engine", () => {
             income: {
               baseSalaryAnnual: 100_000,
               salaryGrowthRate: 0.03,
-              salaryGrowthIsReal: true,
+              salaryGrowthIsReal: false,
             },
             payroll: { payrollInvesting: [], payrollDeductionsSpending: 0 },
           },
@@ -3527,8 +3876,8 @@ describe("Engine", () => {
       expect(y5Override!.grossIncome).toBeGreaterThan(y5NoOverride!.grossIncome);
     });
 
-    it("hand-calculated: salary = base × (1 + inflation)^years when salaryGrowthMode REAL", () => {
-      // REAL mode: nominal = base * (1+inflation)^years
+    it("hand-calculated: salary = base × (1 + inflation)^years when salaryGrowthMode REAL + salaryGrowthIsReal=false", () => {
+      // REAL mode + salaryGrowthIsReal=false: nominal = base * (1+inflation)^years
       const household = createBaseHousehold({
         people: [
           {
@@ -3537,7 +3886,7 @@ describe("Engine", () => {
             income: {
               baseSalaryAnnual: 100_000,
               salaryGrowthRate: 0.05,
-              salaryGrowthIsReal: true,
+              salaryGrowthIsReal: false,
             },
             payroll: { payrollInvesting: [], payrollDeductionsSpending: 0 },
           },
@@ -3555,6 +3904,36 @@ describe("Engine", () => {
       const y2029 = result.yearRows.find((r) => r.year === 2029);
 
       expect(y2029?.grossIncome).toBeCloseTo(expected, -2);
+    });
+
+    it("salaryGrowthIsReal=true: REAL mode uses salaryGrowth as real growth (no double-deflation)", () => {
+      // When salaryGrowthIsReal=true, salaryGrowthMode=REAL, salaryGrowthRate=0.05: growth = 5% (not reduced by inflation)
+      const household = createBaseHousehold({
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            income: {
+              baseSalaryAnnual: 100_000,
+              salaryGrowthRate: 0.05,
+              salaryGrowthIsReal: true,
+            },
+            payroll: { payrollInvesting: [], payrollDeductionsSpending: 0 },
+          },
+        ],
+      });
+      const scenario = createBaseScenario({
+        inflation: 0.03,
+        salaryGrowthMode: "REAL",
+      });
+      const result = runProjection(household, scenario, 5);
+
+      // Year 4: 100k * 1.05^4 ≈ 121_550 (5% real growth, not inflation's 3%)
+      const y2029 = result.yearRows.find((r) => r.year === 2029);
+      expect(y2029?.grossIncome).toBeCloseTo(
+        100_000 * Math.pow(1.05, 2029 - START_YEAR),
+        -2
+      );
     });
 
     it("NOMINAL vs REAL produce different nominal salaries when growth ≠ inflation", () => {

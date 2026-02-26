@@ -252,8 +252,10 @@ export const ScenarioSchema = z.object({
   traditionalWithdrawalsTaxRate: z.number().min(0).max(1).optional(),
   /** Effective tax rate on Roth withdrawals. MVP: always 0. */
   rothWithdrawalsTaxRate: z.number().min(0).max(1).optional().default(0),
-  /** Effective tax rate on taxable brokerage withdrawals. MVP: 0 (capital gains modeled separately later). */
-  taxableWithdrawalsTaxRate: z.number().min(0).max(1).optional().default(0),
+  /** Effective tax rate on taxable brokerage withdrawals. Default 10% (capital gains modeled separately later). */
+  taxableWithdrawalsTaxRate: z.number().min(0).max(1).optional().default(0.10),
+  /** Scenario-level override for total payroll deductions (insurance, etc.). When set, used instead of sum of person-level payrollDeductionsSpending. */
+  payrollDeductionsAnnual: z.number().nullable().optional(),
   contributionOverrides: z.array(ContributionOverrideSchema).optional().default([]),
   eventOverrides: z.array(EventSchema).optional().default([]),
   /** When true and reconciliationDelta > 0, route overflow to Taxable Brokerage (Overflow). */

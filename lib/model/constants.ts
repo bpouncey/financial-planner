@@ -12,6 +12,15 @@ export const DEFAULT_NOMINAL_RETURN = 0.07;
 /** Inflation assumption, decimal. Default 3%. */
 export const DEFAULT_INFLATION = 0.03;
 
+/** Effective tax rate on payroll income (accumulation). Default 25%. Used when gross is source of truth. */
+export const DEFAULT_EFFECTIVE_TAX_RATE = 0.25;
+
+/** Effective tax rate on Traditional (401k, IRA, 403b, HSA) withdrawals. Default 22%. */
+export const DEFAULT_RETIREMENT_TAX_RATE = 0.22;
+
+/** Effective tax rate on taxable brokerage withdrawals. Default 10%. */
+export const DEFAULT_TAXABLE_WITHDRAWAL_TAX_RATE = 0.10;
+
 /** Default modeling mode: real dollars (today's dollars) vs nominal. */
 export const DEFAULT_MODELING_MODE = "REAL" as const;
 

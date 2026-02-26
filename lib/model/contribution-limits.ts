@@ -108,10 +108,15 @@ export function getContributionsByAccount(
     const yearsFromStart = y - startYear;
     const salaryGrowth =
       scenario.salaryGrowthOverride ?? person.income.salaryGrowthRate ?? 0;
-    const growthFactor =
-      salaryGrowthMode === "REAL"
-        ? Math.pow(1 + inflation, yearsFromStart)
-        : Math.pow(1 + salaryGrowth, yearsFromStart);
+    const salaryGrowthIsReal = person.income.salaryGrowthIsReal ?? true;
+    let growthFactor: number;
+    if (salaryGrowthMode === "NOMINAL") {
+      growthFactor = Math.pow(1 + salaryGrowth, yearsFromStart);
+    } else if (salaryGrowthMode === "REAL" && salaryGrowthIsReal) {
+      growthFactor = Math.pow(1 + salaryGrowth, yearsFromStart);
+    } else {
+      growthFactor = Math.pow(1 + inflation, yearsFromStart);
+    }
     let income = person.income.baseSalaryAnnual * growthFactor;
     if (person.income.bonusAnnual) income += person.income.bonusAnnual;
     if (person.income.bonusPercent)
@@ -238,10 +243,15 @@ function getContributionsBreakdownByPersonAndAccount(
     const yearsFromStart = y - startYear;
     const salaryGrowth =
       scenario.salaryGrowthOverride ?? person.income.salaryGrowthRate ?? 0;
-    const growthFactor =
-      salaryGrowthMode === "REAL"
-        ? Math.pow(1 + inflation, yearsFromStart)
-        : Math.pow(1 + salaryGrowth, yearsFromStart);
+    const salaryGrowthIsReal = person.income.salaryGrowthIsReal ?? true;
+    let growthFactor: number;
+    if (salaryGrowthMode === "NOMINAL") {
+      growthFactor = Math.pow(1 + salaryGrowth, yearsFromStart);
+    } else if (salaryGrowthMode === "REAL" && salaryGrowthIsReal) {
+      growthFactor = Math.pow(1 + salaryGrowth, yearsFromStart);
+    } else {
+      growthFactor = Math.pow(1 + inflation, yearsFromStart);
+    }
     let income = person.income.baseSalaryAnnual * growthFactor;
     if (person.income.bonusAnnual) income += person.income.bonusAnnual;
     if (person.income.bonusPercent)

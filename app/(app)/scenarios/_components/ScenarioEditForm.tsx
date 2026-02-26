@@ -1063,6 +1063,71 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
               />
             </FormFieldWithHelp>
           </div>
+          <div className="max-w-xs">
+            <FormFieldWithHelp
+              id="taxable-withdrawal-tax-rate"
+              label="Taxable withdrawal tax rate (%)"
+              helpContent={formatHelpContent(
+                HELP_FORM.taxableWithdrawalsTaxRate
+              )}
+            >
+              <Input
+                id="taxable-withdrawal-tax-rate"
+                type="text"
+                inputMode="numeric"
+                value={
+                  scenario.taxableWithdrawalsTaxRate != null
+                    ? formatPercent(scenario.taxableWithdrawalsTaxRate)
+                    : ""
+                }
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^0-9.-]/g, "");
+                  if (raw === "") {
+                    updateScenario(scenario.id, {
+                      taxableWithdrawalsTaxRate: undefined,
+                    });
+                    return;
+                  }
+                  const v = parsePercent(e.target.value);
+                  updateScenario(scenario.id, {
+                    taxableWithdrawalsTaxRate: v,
+                  });
+                }}
+                placeholder="10"
+              />
+            </FormFieldWithHelp>
+          </div>
+          <div className="max-w-xs">
+            <FormFieldWithHelp
+              id="payroll-deductions-annual"
+              label="Payroll deductions (annual $)"
+              helpContent={formatHelpContent(
+                HELP_FORM.payrollDeductionsAnnual
+              )}
+            >
+              <MoneyInput
+                id="payroll-deductions-annual"
+                value={
+                  scenario.payrollDeductionsAnnual != null
+                    ? String(scenario.payrollDeductionsAnnual)
+                    : ""
+                }
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^0-9.-]/g, "");
+                  if (raw === "") {
+                    updateScenario(scenario.id, {
+                      payrollDeductionsAnnual: undefined,
+                    });
+                    return;
+                  }
+                  const v = parseFloat(raw);
+                  updateScenario(scenario.id, {
+                    payrollDeductionsAnnual: Number.isNaN(v) ? undefined : v,
+                  });
+                }}
+              />
+            </FormFieldWithHelp>
+          </div>
         </div>
       </section>
 
@@ -1192,6 +1257,27 @@ export function ScenarioEditForm({ scenario }: { scenario: Scenario }) {
                 </div>
               )}
             </div>
+          </FormFieldWithHelp>
+          <FormFieldWithHelp
+            id="include-employer-match"
+            label="Include employer match"
+            helpContent={formatHelpContent(HELP_FORM.includeEmployerMatch)}
+          >
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={scenario.includeEmployerMatch ?? false}
+                onChange={(e) =>
+                  updateScenario(scenario.id, {
+                    includeEmployerMatch: e.target.checked,
+                  })
+                }
+                className="h-4 w-4 rounded border-border bg-surface text-accent focus:ring-accent"
+              />
+              <span className="text-sm text-content">
+                Model 401k employer match contributions
+              </span>
+            </label>
           </FormFieldWithHelp>
           <div className="max-w-xs">
             <FormFieldWithHelp

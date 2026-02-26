@@ -41,6 +41,7 @@ function formatValue(
     case "retirementMonthlySpend":
     case "currentMonthlySpend":
     case "takeHomeAnnual":
+    case "payrollDeductionsAnnual":
       return typeof value === "number" ? formatCurrency(value) : String(value);
     case "retirementAgeTarget":
       return typeof value === "number" ? `${value} years` : String(value);
@@ -72,6 +73,7 @@ const DRIVER_LABELS: Partial<Record<keyof Scenario, string>> = {
   retirementEffectiveTaxRate: "Retirement tax rate",
   traditionalWithdrawalsTaxRate: "Traditional withdrawal tax rate",
   stressTestFirstYearReturn: "Stress test first-year return",
+  payrollDeductionsAnnual: "Payroll deductions (annual)",
 };
 
 /** Keys to compare (ordered by impact / user relevance). */
@@ -92,6 +94,7 @@ const DRIVER_KEYS: (keyof Scenario)[] = [
   "retirementEffectiveTaxRate",
   "traditionalWithdrawalsTaxRate",
   "stressTestFirstYearReturn",
+  "payrollDeductionsAnnual",
 ];
 
 function getTaxModeLabel(scenario: Scenario): string {

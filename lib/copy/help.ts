@@ -53,12 +53,14 @@ export const HELP_FORM: Record<string, HelpEntry> = {
   },
   takeHomeAnnual: {
     title: "Take-home (annual)",
-    description: "After-tax income available for spending and saving. Used when you know your actual take-home.",
-    example: "Recommended over effective rate if you have pay stubs.",
+    description:
+      "After-tax income available for spending and saving. Used when you prefer to pin take-home instead of deriving from gross. Ignored when effective tax rate is set.",
+    example: "Use when you have pay stubs and prefer take-home as input.",
   },
   effectiveTaxRate: {
     title: "Effective tax rate",
-    description: "Average tax rate applied to gross income. Taxes = gross income × rate.",
+    description:
+      "Average tax rate applied to gross income. Net to checking = gross × (1 − rate) − 401k/IRA contributions − payroll deductions. Gross income is the source of truth; take-home is derived.",
     example: "25% is a rough estimate for many US households.",
   },
   retirementEffectiveTaxRate: {
@@ -66,6 +68,18 @@ export const HELP_FORM: Record<string, HelpEntry> = {
     description:
       "Traditional/401k withdrawals are taxed. Estimate your retirement tax rate (often lower than working years). Used when drawing from Traditional accounts in the withdrawal phase.",
     example: "15% is common for retirees in lower brackets.",
+  },
+  taxableWithdrawalsTaxRate: {
+    title: "Taxable withdrawal tax rate (%)",
+    description:
+      "Effective tax rate on taxable brokerage withdrawals in retirement. Gains may be taxed as capital gains; this rate approximates the blended impact. Used when drawing from taxable accounts in the withdrawal phase.",
+    example: "10% is a rough estimate for LTCG in lower brackets.",
+  },
+  payrollDeductionsAnnual: {
+    title: "Payroll deductions (annual $)",
+    description:
+      "Scenario-level override for total payroll deductions (health insurance, dental, etc.). When set, replaces the sum of per-person payroll deductions from Setup. Leave blank to use person-level values.",
+    example: "6000 = $6,000/year in deductions for this scenario.",
   },
   retirementMonthlySpend: {
     title: "Retirement monthly spend",

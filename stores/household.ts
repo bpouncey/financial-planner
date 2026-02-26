@@ -14,6 +14,9 @@ import {
   DEFAULT_SWR,
   DEFAULT_NOMINAL_RETURN,
   DEFAULT_INFLATION,
+  DEFAULT_EFFECTIVE_TAX_RATE,
+  DEFAULT_RETIREMENT_TAX_RATE,
+  DEFAULT_TAXABLE_WITHDRAWAL_TAX_RATE,
 } from "@/lib/model/constants";
 import { HouseholdSchema, ScenarioSchema } from "@/lib/types/zod";
 
@@ -28,8 +31,8 @@ function createDefaultScenario(): Scenario {
     modelingMode: "REAL",
     nominalReturn: DEFAULT_NOMINAL_RETURN,
     inflation: DEFAULT_INFLATION,
-    effectiveTaxRate: null,
-    takeHomeAnnual: null, // User must set; can default later
+    effectiveTaxRate: DEFAULT_EFFECTIVE_TAX_RATE,
+    takeHomeAnnual: null,
     takeHomeDefinition: "NET_TO_CHECKING",
     swr: DEFAULT_SWR,
     retirementMonthlySpend: 5000,
@@ -39,6 +42,8 @@ function createDefaultScenario(): Scenario {
     salaryGrowthMode: "REAL",
     includeEmployerMatch: false,
     retireWhen: "EITHER",
+    traditionalWithdrawalsTaxRate: DEFAULT_RETIREMENT_TAX_RATE,
+    taxableWithdrawalsTaxRate: DEFAULT_TAXABLE_WITHDRAWAL_TAX_RATE,
   });
 }
 
