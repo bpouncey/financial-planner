@@ -434,8 +434,8 @@ describe("Engine", () => {
       const netHigh = resultHigh.yearRows[0].netToChecking;
 
       expect(netHigh).toBeLessThan(netLow);
-      // Pre-tax 401k contributions reduce taxable income, so the net take-home reduction
-      // is contribution_delta * (1 - effectiveTaxRate) = 15_000 * 0.75 = 11_250
+      // With taxable-income formula, pre-tax 401k contributions reduce the tax base too,
+      // so the net-to-checking delta = contribDiff × (1 - effectiveRate) = 15_000 × 0.75 = 11_250.
       expect(netLow - netHigh).toBeCloseTo(11_250, 0);
     });
 
@@ -504,8 +504,8 @@ describe("Engine", () => {
       const netWithDed = resultWithDed.yearRows[0].netToChecking;
 
       expect(netWithDed).toBeLessThan(netNoDed);
-      // Payroll deductions are pre-tax, so they also reduce taxable income.
-      // Net take-home reduction = deduction * (1 - effectiveTaxRate) = 12_000 * 0.75 = 9_000
+      // With taxable-income formula, payroll deductions reduce the tax base too,
+      // so the net-to-checking delta = deduction × (1 - effectiveRate) = 12_000 × 0.75 = 9_000.
       expect(netNoDed - netWithDed).toBeCloseTo(9_000, 0);
     });
 
@@ -979,6 +979,96 @@ describe("Engine", () => {
       if (resultBase.fiYear != null && resultRsu.fiYear != null) {
         expect(resultRsu.fiYear).toBeLessThanOrEqual(resultBase.fiYear);
       }
+    });
+
+    it("RSU withholding is not double-counted with effectiveTaxRate (two-path taxation)", () => {
+      // Verify Option A fix: RSU income is taxed ONLY via withholdingRate;
+      // effectiveTaxRate applies only to salary (taxable income after pre-tax deductions).
+      const brokerageId = "brokerage";
+      const tradId = "trad";
+      const salary = 200_000;
+      const rsuShares = 100;
+      const rsuPrice = 500; // vestValue = 50_000
+      const withholdingRate = 0.30;
+      const effectiveTaxRate = 0.25;
+      const preContrib = 10_000; // pre-tax 401k
+      const payrollDeduc = 6_000; // payrollDeductionsSpending
+
+      const household = createBaseHousehold({
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            income: { baseSalaryAnnual: salary, salaryGrowthRate: 0, salaryGrowthIsReal: false },
+            payroll: {
+              payrollInvesting: [{ accountId: tradId, amountAnnual: preContrib }],
+              payrollDeductionsSpending: payrollDeduc,
+            },
+          },
+        ],
+        accounts: [
+          {
+            id: tradId,
+            name: "401k",
+            type: "TRADITIONAL_401K",
+            owner: "PERSON_A",
+            startingBalance: 0,
+            includedInFIAssets: true,
+          },
+          {
+            id: brokerageId,
+            name: "Brokerage",
+            type: "TAXABLE",
+            owner: "PERSON_A",
+            startingBalance: 0,
+            includedInFIAssets: true,
+          },
+        ],
+        equityGrants: [
+          {
+            id: "rsu1",
+            ownerPersonId: "p1",
+            type: "RSU",
+            startYear: 2025,
+            vestingTable: [{ year: 2027, shares: rsuShares }],
+            priceAssumption: { mode: "FIXED", fixedPrice: rsuPrice },
+            withholdingRate,
+            destinationAccountId: brokerageId,
+          },
+        ],
+      });
+      const scenario = createBaseScenario({
+        effectiveTaxRate,
+        takeHomeAnnual: null,
+        currentMonthlySpend: 0,
+        enableUnallocatedSurplusBalancing: true,
+        salaryGrowthMode: "NOMINAL",
+      });
+
+      const result = runProjection(household, scenario, 5);
+      const row2027 = result.yearRows.find((r) => r.year === 2027);
+      expect(row2027).toBeDefined();
+
+      const vestValue = rsuShares * rsuPrice; // 50_000
+      const rsuNetProceeds = vestValue * (1 - withholdingRate); // 35_000
+      // taxableIncome = salary - preContrib - payrollDeduc = 200_000 - 10_000 - 6_000 = 184_000
+      const taxableIncome = salary - preContrib - payrollDeduc;
+      const expectedTaxesFromSalary = taxableIncome * effectiveTaxRate; // 46_000
+      const expectedTaxesFromRSU = vestValue * withholdingRate; // 15_000
+      const expectedTotalTaxes = expectedTaxesFromSalary + expectedTaxesFromRSU; // 61_000
+
+      expect(row2027!.rsuVestValue).toBe(vestValue);
+      expect(row2027!.rsuNetProceeds).toBeCloseTo(rsuNetProceeds, 0);
+      expect(row2027!.taxesFromSalary).toBeCloseTo(expectedTaxesFromSalary, 0);
+      expect(row2027!.taxesFromRSU).toBeCloseTo(expectedTaxesFromRSU, 0);
+      expect(row2027!.taxes).toBeCloseTo(expectedTotalTaxes, 0);
+
+      // RSU effective tax rate must equal withholdingRate only (not ~55%)
+      const rsuEffectiveRate = row2027!.taxesFromRSU! / vestValue;
+      expect(rsuEffectiveRate).toBeCloseTo(withholdingRate, 2);
+
+      // Reconciliation must still hold
+      expect(Math.abs(row2027!.reconciliationDelta ?? 0)).toBeLessThan(0.02);
     });
   });
 

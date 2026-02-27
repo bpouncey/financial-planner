@@ -335,6 +335,10 @@ export interface YearRow {
   rsuWithholding?: number;
   /** RSU net proceeds deposited to destination accounts. */
   rsuNetProceeds?: number;
+  /** Accumulation phase: taxes from salary income (effectiveTaxRate × taxable salary income). */
+  taxesFromSalary?: number;
+  /** Accumulation phase: taxes from RSU income (withholdingRate × rsuVestValue). Same as rsuWithholding, explicit tax label. */
+  taxesFromRSU?: number;
   /** Withdrawal phase: amount withdrawn from Traditional (401k, IRA, 403b, HSA) accounts. */
   withdrawalsTraditional?: number;
   /** Withdrawal phase: amount withdrawn from Roth accounts. */
@@ -625,13 +629,12 @@ export function runProjection(
     if (takeHomeDefinition === "OVERRIDE" && netToCheckingOverride != null) {
       netToChecking = netToCheckingOverride;
     } else if (effectiveRate != null) {
-      // Gross is source of truth: derive net from effectiveTaxRate
-      // Pre-tax contributions and payroll deductions reduce taxable income before applying the rate
+      // Salary is source of truth: effectiveTaxRate applies to taxable income
+      // (gross minus pre-tax contributions and payroll deductions).
+      // Roth contributions are after-tax and do not reduce the tax base.
       const taxableIncome = gross - employeePreTaxContribs - payrollDeductions;
-      const taxes = taxableIncome * effectiveRate;
       netToChecking =
-        gross -
-        taxes -
+        gross - taxableIncome * effectiveRate -
         employeePreTaxContribs -
         employeeRothContribs -
         payrollDeductions;
@@ -765,6 +768,8 @@ export function runProjection(
     let rowRsuVestValue: number | undefined;
     let rowRsuWithholding: number | undefined;
     let rowRsuNetProceeds: number | undefined;
+    let rowTaxesFromSalary: number | undefined;
+    let rowTaxesFromRSU: number | undefined;
     let rowWithdrawalsTraditional: number | undefined;
     let rowWithdrawalsRoth: number | undefined;
     let rowWithdrawalsTaxable: number | undefined;
@@ -928,7 +933,9 @@ export function runProjection(
     } else {
       // Accumulation phase: income, taxes, contributions, growth
       const rsuBreakdown = getRsuVestBreakdown(household, year, scenario);
-      gross = getGrossIncome(year) + rsuBreakdown.vestValue;
+      // Keep salary and RSU separate so each is taxed via its own path (no double-counting).
+      const salaryGross = getGrossIncome(year);
+      gross = salaryGross + rsuBreakdown.vestValue;
       if (i === 0) firstYearIncome = gross;
 
       spending =
@@ -984,13 +991,16 @@ export function runProjection(
         employerContribs,
       } = payrollSplit;
 
+      // Tax salary only (no RSU in gross): effectiveTaxRate applied to taxable salary income.
       const { netToChecking, taxesPayroll } = getNetToCheckingAndTaxes(
-        gross,
+        salaryGross,
         employeePreTaxContribs,
         employeeRothContribs,
         payrollDeductions
       );
-      taxes = taxesPayroll;
+      // RSU withholding is the sole tax on RSU income (already deducted from rsuNetProceeds).
+      const taxesFromRSU = rsuBreakdown.withholding;
+      taxes = taxesPayroll + taxesFromRSU;
       const taxesAdditional = 0; // Phase 1: no taxes outside payroll
 
       const totalOopContrib = Object.values(oopContrib).reduce(
@@ -1072,6 +1082,8 @@ export function runProjection(
       rowRsuVestValue = rsuBreakdown.vestValue;
       rowRsuWithholding = rsuBreakdown.withholding;
       rowRsuNetProceeds = rsuBreakdown.netProceeds;
+      rowTaxesFromSalary = taxesPayroll;
+      rowTaxesFromRSU = taxesFromRSU;
     }
 
     const growthByAccount: Record<string, number> = {};
@@ -1140,6 +1152,8 @@ export function runProjection(
     if (rowRsuVestValue != null) row.rsuVestValue = rowRsuVestValue;
     if (rowRsuWithholding != null) row.rsuWithholding = rowRsuWithholding;
     if (rowRsuNetProceeds != null) row.rsuNetProceeds = rowRsuNetProceeds;
+    if (rowTaxesFromSalary != null) row.taxesFromSalary = rowTaxesFromSalary;
+    if (rowTaxesFromRSU != null) row.taxesFromRSU = rowTaxesFromRSU;
     if (rowUnallocatedSurplus != null) row.unallocatedSurplus = rowUnallocatedSurplus;
     if (rowWithdrawalsTraditional != null) row.withdrawalsTraditional = rowWithdrawalsTraditional;
     if (rowWithdrawalsRoth != null) row.withdrawalsRoth = rowWithdrawalsRoth;
