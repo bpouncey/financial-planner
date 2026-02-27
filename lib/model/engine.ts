@@ -626,8 +626,12 @@ export function runProjection(
       netToChecking = netToCheckingOverride;
     } else if (effectiveRate != null) {
       // Gross is source of truth: derive net from effectiveTaxRate
+      // Pre-tax contributions and payroll deductions reduce taxable income before applying the rate
+      const taxableIncome = gross - employeePreTaxContribs - payrollDeductions;
+      const taxes = taxableIncome * effectiveRate;
       netToChecking =
-        gross * (1 - effectiveRate) -
+        gross -
+        taxes -
         employeePreTaxContribs -
         employeeRothContribs -
         payrollDeductions;

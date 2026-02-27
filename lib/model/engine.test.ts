@@ -434,7 +434,9 @@ describe("Engine", () => {
       const netHigh = resultHigh.yearRows[0].netToChecking;
 
       expect(netHigh).toBeLessThan(netLow);
-      expect(netLow - netHigh).toBeCloseTo(15_000, 0);
+      // Pre-tax 401k contributions reduce taxable income, so the net take-home reduction
+      // is contribution_delta * (1 - effectiveTaxRate) = 15_000 * 0.75 = 11_250
+      expect(netLow - netHigh).toBeCloseTo(11_250, 0);
     });
 
     it("employer match increases retirement balances but does not change take-home", () => {
@@ -502,7 +504,9 @@ describe("Engine", () => {
       const netWithDed = resultWithDed.yearRows[0].netToChecking;
 
       expect(netWithDed).toBeLessThan(netNoDed);
-      expect(netNoDed - netWithDed).toBeCloseTo(12_000, 0);
+      // Payroll deductions are pre-tax, so they also reduce taxable income.
+      // Net take-home reduction = deduction * (1 - effectiveTaxRate) = 12_000 * 0.75 = 9_000
+      expect(netNoDed - netWithDed).toBeCloseTo(9_000, 0);
     });
 
     it("payrollDeductionsAnnual reduces netToChecking when takeHomeAnnual path used", () => {
