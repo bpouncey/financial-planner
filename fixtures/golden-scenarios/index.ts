@@ -76,6 +76,8 @@ function createBaseScenario(overrides?: Partial<Scenario>): Scenario {
     unallocatedSurplusFrequency: "Monthly" as const,
     retireWhen: "EITHER",
     equityGrantOverrides: [],
+    withdrawalOrderWithinBucket: "SMALLEST_FIRST" as const,
+    enableCatchUpContributions: false,
     ...overrides,
   };
 }

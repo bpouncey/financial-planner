@@ -110,10 +110,13 @@ function getWithdrawalBucket(accountType: string): string | null {
   return null;
 }
 
-/** Return accounts ordered for withdrawal using bucket-based strategy */
+/** Return accounts ordered for withdrawal using bucket-based strategy.
+ * Within each bucket, accounts are sorted per orderWithin using currentBalances. */
 function getAccountsInWithdrawalOrderByBuckets(
   accounts: Account[],
-  withdrawalOrderBuckets: string[]
+  withdrawalOrderBuckets: string[],
+  orderWithin: "SMALLEST_FIRST" | "LARGEST_FIRST" | "ACCOUNT_ORDER",
+  currentBalances: Record<string, number>
 ): Account[] {
   // Group accounts by bucket
   const byBucket = new Map<string, Account[]>();
@@ -124,11 +127,16 @@ function getAccountsInWithdrawalOrderByBuckets(
     list.push(a);
     byBucket.set(bucket, list);
   }
-  
-  // Order by buckets, within bucket order by balance (descending) for Phase 1
+
   const result: Account[] = [];
   for (const bucket of withdrawalOrderBuckets) {
-    const list = byBucket.get(bucket) ?? [];
+    const list = [...(byBucket.get(bucket) ?? [])];
+    if (orderWithin === "SMALLEST_FIRST") {
+      list.sort((a, b) => (currentBalances[a.id] ?? 0) - (currentBalances[b.id] ?? 0));
+    } else if (orderWithin === "LARGEST_FIRST") {
+      list.sort((a, b) => (currentBalances[b.id] ?? 0) - (currentBalances[a.id] ?? 0));
+    }
+    // ACCOUNT_ORDER: no sort — preserve original order
     result.push(...list);
   }
   return result;
@@ -343,8 +351,14 @@ export interface YearRow {
   withdrawalsTaxable?: number;
   /** Withdrawal phase: taxes on withdrawals (traditional × rate + roth × 0 + taxable × 0 for MVP). */
   withdrawalTaxes?: number;
-  /** Accumulation phase: unallocated surplus pseudo-expense (balancing sink; no FI impact). */
+  /** Accumulation phase: unallocated surplus (routed to surplusDestinationAccountId when configured). */
   unallocatedSurplus?: number;
+  /** Accumulation phase: salary-only gross income (excludes RSU vest value). For tax tracing. */
+  salaryGross?: number;
+  /** Accumulation phase: taxes on salary income only (taxableIncomeBase × effectiveTaxRate). Subset of taxesPayroll. */
+  taxesFromSalary?: number;
+  /** Accumulation phase: RSU tax (= rsuWithholding; explicit alias for tax tracing). */
+  taxesFromRSU?: number;
 }
 
 export interface ValidationAssumption {
@@ -611,23 +625,37 @@ export function runProjection(
 
   /**
    * Compute netToChecking and taxes.
-   * Gross-driven (effectiveTaxRate): netToChecking = gross - taxes - employeePreTax - employeeRoth - payrollDeductions.
+   * Gross-driven (effectiveTaxRate): taxable base = grossSalary − preТax − payrollDeductions.
+   *   taxesFromSalary = taxableBase × effectiveTaxRate. RSU withholding is tracked separately.
    * Take-home-driven (takeHomeAnnual): use takeHomeDefinition to interpret takeHomeAnnual.
    * OVERRIDE: use netToCheckingOverride when set.
+   *
+   * @param grossSalary - Salary income only (RSU vest value excluded; it is taxed via its own withholding rate).
    */
   const getNetToCheckingAndTaxes = (
-    gross: number,
+    grossSalary: number,
     employeePreTaxContribs: number,
     employeeRothContribs: number,
     payrollDeductions: number
-  ): { netToChecking: number; taxesPayroll: number } => {
+  ): { netToChecking: number; taxesPayroll: number; taxesFromSalary: number } => {
     let netToChecking: number;
+    let taxesFromSalary: number;
     if (takeHomeDefinition === "OVERRIDE" && netToCheckingOverride != null) {
       netToChecking = netToCheckingOverride;
+      taxesFromSalary =
+        grossSalary -
+        netToChecking -
+        employeePreTaxContribs -
+        employeeRothContribs -
+        payrollDeductions;
     } else if (effectiveRate != null) {
-      // Gross is source of truth: derive net from effectiveTaxRate
+      // Gross-driven: taxable income excludes pre-tax contributions and payroll deductions
+      // (pre-tax 401k/403b reduce W-2 taxable income; payroll benefit deductions are pre-tax)
+      const taxableIncome = grossSalary - employeePreTaxContribs - payrollDeductions;
+      taxesFromSalary = taxableIncome * effectiveRate;
       netToChecking =
-        gross * (1 - effectiveRate) -
+        grossSalary -
+        taxesFromSalary -
         employeePreTaxContribs -
         employeeRothContribs -
         payrollDeductions;
@@ -635,7 +663,7 @@ export function runProjection(
       // Take-home-driven: resolve afterTaxPay from takeHomeInput or fallback
       // When takeHomeInput is null, fallback already subtracts payrollDeductions
       const afterTaxPay =
-        takeHomeInput != null ? takeHomeInput : gross - payrollDeductions;
+        takeHomeInput != null ? takeHomeInput : grossSalary - payrollDeductions;
       if (takeHomeDefinition === "NET_TO_CHECKING") {
         // When user provides takeHomeAnnual, interpret as after-tax/401k; subtract payroll deductions to get net-to-checking
         netToChecking =
@@ -650,18 +678,18 @@ export function runProjection(
               payrollDeductions
             : afterTaxPay - employeePreTaxContribs - employeeRothContribs;
       }
+      taxesFromSalary =
+        grossSalary -
+        netToChecking -
+        employeePreTaxContribs -
+        employeeRothContribs -
+        payrollDeductions;
     }
 
-    // taxesPayroll = gross - netToChecking - employeePreTax - employeeRoth - payrollDeductions
-    // (payroll deductions are spending, not taxes)
-    const taxesPayroll =
-      gross -
-      netToChecking -
-      employeePreTaxContribs -
-      employeeRothContribs -
-      payrollDeductions;
+    // taxesPayroll = salary taxes only (RSU withholding is tracked separately in rsuBreakdown.withholding)
+    const taxesPayroll = taxesFromSalary;
 
-    return { netToChecking, taxesPayroll };
+    return { netToChecking, taxesPayroll, taxesFromSalary };
   };
 
   const currentMonthlySpend = scenario.currentMonthlySpend ?? 6353;
@@ -692,10 +720,8 @@ export function runProjection(
   // ROTH bucket includes both ROTH_401K and ROTH_IRA.
   const withdrawalBuckets =
     scenario.withdrawalOrderBuckets ?? [...DEFAULT_WITHDRAWAL_BUCKETS];
-  const orderedAccounts = getAccountsInWithdrawalOrderByBuckets(
-    household.accounts,
-    withdrawalBuckets
-  );
+  const withdrawalOrderWithinBucket =
+    scenario.withdrawalOrderWithinBucket ?? "SMALLEST_FIRST";
 
   const retireWhen = scenario.retireWhen ?? "EITHER";
   const firstPerson = people[0];
@@ -761,6 +787,9 @@ export function runProjection(
     let rowRsuVestValue: number | undefined;
     let rowRsuWithholding: number | undefined;
     let rowRsuNetProceeds: number | undefined;
+    let rowSalaryGross: number | undefined;
+    let rowTaxesFromSalary: number | undefined;
+    let rowTaxesFromRSU: number | undefined;
     let rowWithdrawalsTraditional: number | undefined;
     let rowWithdrawalsRoth: number | undefined;
     let rowWithdrawalsTaxable: number | undefined;
@@ -820,6 +849,13 @@ export function runProjection(
       const taxableRate =
         scenario.taxableWithdrawalsTaxRate ?? DEFAULT_TAXABLE_WITHDRAWAL_TAX_RATE;
 
+      // Re-compute ordered accounts each year so within-bucket ordering reflects current balances
+      const orderedAccounts = getAccountsInWithdrawalOrderByBuckets(
+        household.accounts,
+        withdrawalBuckets,
+        withdrawalOrderWithinBucket,
+        balances
+      );
       const accessibleTypes = getAccessibleAccountTypes(year, people);
       const accessibleAccounts = orderedAccounts.filter((a) =>
         accessibleTypes.has(a.type)
@@ -924,7 +960,9 @@ export function runProjection(
     } else {
       // Accumulation phase: income, taxes, contributions, growth
       const rsuBreakdown = getRsuVestBreakdown(household, year, scenario);
-      gross = getGrossIncome(year) + rsuBreakdown.vestValue;
+      const salaryGrossThisYear = getGrossIncome(year);
+      // gross = total W-2 income for display; salary and RSU taxed separately
+      gross = salaryGrossThisYear + rsuBreakdown.vestValue;
       if (i === 0) firstYearIncome = gross;
 
       spending =
@@ -937,15 +975,22 @@ export function runProjection(
       let savingsContrib = getMonthlySavingsContributions(year);
       const rsuProceeds = rsuBreakdown.byAccount;
 
-      // Stop funding emergency fund goal account once it reaches target
+      // Cap emergency fund contributions at remaining room — avoids overshooting goal mid-year
       const efGoal = household.emergencyFundGoal;
-      if (
-        efGoal?.targetAmount != null &&
-        efGoal?.accountId != null &&
-        (balances[efGoal.accountId] ?? 0) >= efGoal.targetAmount
-      ) {
-        oopContrib = { ...oopContrib, [efGoal.accountId]: 0 };
-        savingsContrib = { ...savingsContrib, [efGoal.accountId]: 0 };
+      if (efGoal?.targetAmount != null && efGoal?.accountId != null) {
+        const efId = efGoal.accountId;
+        const currentBalance = balances[efId] ?? 0;
+        const roomRemaining = Math.max(0, efGoal.targetAmount - currentBalance);
+        const oopAmt = oopContrib[efId] ?? 0;
+        const savAmt = savingsContrib[efId] ?? 0;
+        const totalPlanned = oopAmt + savAmt;
+        if (totalPlanned > roomRemaining) {
+          // Cap savings first (most common source), then OOP; excess flows to surplus routing
+          const cappedSav = Math.min(savAmt, roomRemaining);
+          const cappedOop = Math.min(oopAmt, Math.max(0, roomRemaining - cappedSav));
+          savingsContrib = { ...savingsContrib, [efId]: cappedSav };
+          oopContrib = { ...oopContrib, [efId]: cappedOop };
+        }
       }
 
       // Merge raw contributions, then cap at IRS limits (use capped for cashflow)
@@ -980,13 +1025,14 @@ export function runProjection(
         employerContribs,
       } = payrollSplit;
 
-      const { netToChecking, taxesPayroll } = getNetToCheckingAndTaxes(
-        gross,
+      const { netToChecking, taxesPayroll, taxesFromSalary } = getNetToCheckingAndTaxes(
+        salaryGrossThisYear,   // salary only — RSU is taxed via its own withholding rate
         employeePreTaxContribs,
         employeeRothContribs,
         payrollDeductions
       );
-      taxes = taxesPayroll;
+      // Total taxes = salary taxes + RSU withholding (no double-counting)
+      taxes = taxesPayroll + rsuBreakdown.withholding;
       const taxesAdditional = 0; // Phase 1: no taxes outside payroll
 
       const totalOopContrib = Object.values(oopContrib).reduce(
@@ -1026,20 +1072,38 @@ export function runProjection(
         cashSavingsChange -
         taxesAdditional;
 
-      // Unallocated Surplus: route positive delta to pseudo-expense (no FI impact)
+      // Unallocated Surplus: route checking surplus to surplusDestinationAccountId.
+      // Checking surplus = netToChecking minus lifestyle spending and after-tax contributions.
+      // (payrollDeductions are excluded from lifestyleSpend since they already came out of netToChecking)
       const enableUnallocatedSurplusBalancing =
         scenario.enableUnallocatedSurplusBalancing ?? true;
-      if (
-        enableUnallocatedSurplusBalancing &&
-        reconciliationDelta > RECONCILIATION_ROUNDING_THRESHOLD
-      ) {
-        rowUnallocatedSurplus = reconciliationDelta;
-        reconciliationDelta = 0;
+      if (enableUnallocatedSurplusBalancing) {
+        const lifestyleSpend = spending - payrollDeductions;
+        const checkingSurplus =
+          netToChecking - lifestyleSpend - totalOopContrib - totalSavingsContrib;
+        if (checkingSurplus > RECONCILIATION_ROUNDING_THRESHOLD) {
+          rowUnallocatedSurplus = checkingSurplus;
+          const destId = scenario.surplusDestinationAccountId;
+          if (destId && household.accounts.some((a) => a.id === destId)) {
+            // Credit surplus to destination account — reflected in net worth and FI assets
+            contributionsByAccount[destId] =
+              (contributionsByAccount[destId] ?? 0) + checkingSurplus;
+          } else {
+            // No destination configured: emit a warning (first occurrence only)
+            if (!validationWarnings.some((w) => w.code === "SURPLUS_NO_DESTINATION")) {
+              validationWarnings.push({
+                code: "SURPLUS_NO_DESTINATION",
+                message: `Unallocated cash surplus detected (e.g. $${Math.round(checkingSurplus).toLocaleString()} in ${year}). Set surplusDestinationAccountId on the scenario to route it to an account and include it in net worth.`,
+              });
+            }
+          }
+        }
       } else {
-        // Optional: route overflow to taxable when autoFixOverflow enabled (legacy)
+        // Legacy: route overflow to taxable when autoFixOverflow enabled
         const autoFixOverflow = scenario.autoFixOverflow ?? false;
         if (
           autoFixOverflow &&
+          reconciliationDelta != null &&
           reconciliationDelta > RECONCILIATION_ROUNDING_THRESHOLD
         ) {
           const taxableAccount = household.accounts.find(
@@ -1068,6 +1132,9 @@ export function runProjection(
       rowRsuVestValue = rsuBreakdown.vestValue;
       rowRsuWithholding = rsuBreakdown.withholding;
       rowRsuNetProceeds = rsuBreakdown.netProceeds;
+      rowSalaryGross = salaryGrossThisYear;
+      rowTaxesFromSalary = taxesFromSalary;
+      rowTaxesFromRSU = rsuBreakdown.withholding;
     }
 
     const growthByAccount: Record<string, number> = {};
@@ -1137,6 +1204,9 @@ export function runProjection(
     if (rowRsuWithholding != null) row.rsuWithholding = rowRsuWithholding;
     if (rowRsuNetProceeds != null) row.rsuNetProceeds = rowRsuNetProceeds;
     if (rowUnallocatedSurplus != null) row.unallocatedSurplus = rowUnallocatedSurplus;
+    if (rowSalaryGross != null) row.salaryGross = rowSalaryGross;
+    if (rowTaxesFromSalary != null) row.taxesFromSalary = rowTaxesFromSalary;
+    if (rowTaxesFromRSU != null) row.taxesFromRSU = rowTaxesFromRSU;
     if (rowWithdrawalsTraditional != null) row.withdrawalsTraditional = rowWithdrawalsTraditional;
     if (rowWithdrawalsRoth != null) row.withdrawalsRoth = rowWithdrawalsRoth;
     if (rowWithdrawalsTaxable != null) row.withdrawalsTaxable = rowWithdrawalsTaxable;

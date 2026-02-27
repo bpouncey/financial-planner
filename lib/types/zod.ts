@@ -273,6 +273,15 @@ export const ScenarioSchema = z.object({
       })
     )
     .optional(),
+  /** Account ID to sweep unallocated cash surplus into each year. Required for surplus to be credited to net worth.
+   * When unset and a surplus exists, a SURPLUS_NO_DESTINATION validation warning is emitted. */
+  surplusDestinationAccountId: z.string().nullish(),
+  /** Within-bucket ordering when multiple accounts share a withdrawal bucket. Default SMALLEST_FIRST. */
+  withdrawalOrderWithinBucket: z
+    .enum(["SMALLEST_FIRST", "LARGEST_FIRST", "ACCOUNT_ORDER"])
+    .default("SMALLEST_FIRST"),
+  /** When true, applies IRS catch-up contribution amounts for people age 50+. Default false. */
+  enableCatchUpContributions: z.boolean().default(false),
 });
 export type Scenario = z.infer<typeof ScenarioSchema>;
 

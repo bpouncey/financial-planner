@@ -434,7 +434,9 @@ describe("Engine", () => {
       const netHigh = resultHigh.yearRows[0].netToChecking;
 
       expect(netHigh).toBeLessThan(netLow);
-      expect(netLow - netHigh).toBeCloseTo(15_000, 0);
+      // BUG-02 fix: pre-tax contribs reduce taxable income, so taxes also decrease.
+      // Net impact = contribution × (1 − effectiveTaxRate) = 15_000 × 0.75 = 11_250
+      expect(netLow - netHigh).toBeCloseTo(11_250, 0);
     });
 
     it("employer match increases retirement balances but does not change take-home", () => {
@@ -502,7 +504,9 @@ describe("Engine", () => {
       const netWithDed = resultWithDed.yearRows[0].netToChecking;
 
       expect(netWithDed).toBeLessThan(netNoDed);
-      expect(netNoDed - netWithDed).toBeCloseTo(12_000, 0);
+      // BUG-02 fix: payroll deductions reduce taxable income, so taxes also decrease.
+      // Net impact = deduction × (1 − effectiveTaxRate) = 12_000 × 0.75 = 9_000
+      expect(netNoDed - netWithDed).toBeCloseTo(9_000, 0);
     });
 
     it("payrollDeductionsAnnual reduces netToChecking when takeHomeAnnual path used", () => {
@@ -3970,6 +3974,489 @@ describe("Engine", () => {
       expect(y2029Real!.grossIncome).toBeCloseTo(100_000 * Math.pow(1.03, 4), -2);
       expect(y2029Nominal!.grossIncome).toBeCloseTo(100_000 * Math.pow(1.05, 4), -2);
       expect(y2029Nominal!.grossIncome).toBeGreaterThan(y2029Real!.grossIncome);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 3 Engine Fix Tests (BUG-02, 03, 04, 05, 06, SPEC-01)
+// ---------------------------------------------------------------------------
+describe("Round 3 Engine Fixes", () => {
+  /** Complete Scenario factory — avoids TS complaints about missing required fields. */
+  function makeR3Scenario(overrides?: Partial<Scenario>): Scenario {
+    return {
+      id: "s-r3",
+      name: "R3 Test",
+      modelingMode: "REAL",
+      nominalReturn: 0.07,
+      inflation: 0.03,
+      effectiveTaxRate: 0.25,
+      takeHomeAnnual: null,
+      takeHomeDefinition: "NET_TO_CHECKING",
+      swr: 0.04,
+      retirementMonthlySpend: 5_000,
+      currentMonthlySpend: 3_000,
+      retirementAgeTarget: 65,
+      salaryGrowthOverride: null,
+      salaryGrowthMode: "REAL",
+      includeEmployerMatch: false,
+      withdrawalOrder: ["TAXABLE", "TRADITIONAL_401K", "ROTH_IRA"],
+      withdrawalOrderBuckets: ["TAXABLE", "TAX_DEFERRED", "ROTH"],
+      withdrawalOrderWithinBucket: "SMALLEST_FIRST",
+      rothWithdrawalsTaxRate: 0,
+      taxableWithdrawalsTaxRate: 0,
+      contributionOverrides: [],
+      eventOverrides: [],
+      autoFixOverflow: false,
+      enableUnallocatedSurplusBalancing: true,
+      unallocatedSurplusFrequency: "Monthly",
+      retireWhen: "EITHER",
+      equityGrantOverrides: [],
+      enableCatchUpContributions: false,
+      ...overrides,
+    };
+  }
+
+  /** Complete Household factory for R3 tests. */
+  function makeR3Household(overrides?: Partial<Household>): Household {
+    return {
+      id: "hh-r3",
+      name: "R3 Test Household",
+      startYear: START_YEAR,
+      currency: "USD",
+      people: [
+        {
+          id: "p1",
+          name: "Person A",
+          birthYear: 1980,
+          income: {
+            baseSalaryAnnual: 200_000,
+            salaryGrowthRate: 0,
+            salaryGrowthIsReal: true,
+          },
+          payroll: {
+            payrollInvesting: [],
+            payrollDeductionsSpending: 0,
+          },
+        },
+      ],
+      accounts: [
+        {
+          id: "trad",
+          name: "Traditional 401k",
+          type: "TRADITIONAL_401K",
+          owner: "PERSON_A",
+          startingBalance: 50_000,
+          includedInFIAssets: true,
+        },
+      ],
+      scenarios: [],
+      outOfPocketInvesting: [],
+      monthlySavings: [],
+      events: [],
+      equityGrants: [],
+      ...overrides,
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // BUG-02: Taxable base excludes pre-tax contributions and payroll deductions
+  // -------------------------------------------------------------------------
+  describe("BUG-02: taxable salary base excludes pre-tax contribs and payroll deductions", () => {
+    it("taxesFromSalary = (gross - preTax - payrollDed) × effectiveTaxRate", () => {
+      const tradId = "trad401k";
+      const household = makeR3Household({
+        accounts: [
+          { id: tradId, name: "401k", type: "TRADITIONAL_401K", owner: "PERSON_A", startingBalance: 0, includedInFIAssets: true },
+        ],
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            birthYear: 1980,
+            income: { baseSalaryAnnual: 200_000, salaryGrowthRate: 0, salaryGrowthIsReal: true },
+            payroll: {
+              payrollInvesting: [
+                { accountId: tradId, amountAnnual: 20_000, contributorType: "employee" as const },
+              ],
+              payrollDeductionsSpending: 5_000,
+            },
+          },
+        ],
+      });
+      // taxableBase = 200_000 - 20_000 - 5_000 = 175_000
+      // taxesFromSalary = 175_000 × 0.25 = 43_750
+      // netToChecking = 200_000 - 43_750 - 20_000 - 5_000 = 131_250
+      const scenario = makeR3Scenario({ effectiveTaxRate: 0.25 });
+      const result = runProjection(household, scenario, 1);
+      const y1 = result.yearRows[0]!;
+
+      expect(y1.taxesFromSalary).toBeCloseTo(43_750, -1);
+      expect(y1.netToChecking).toBeCloseTo(131_250, -1);
+    });
+
+    it("when no pre-tax contribs: taxesFromSalary = grossSalary × effectiveTaxRate", () => {
+      const household = makeR3Household();
+      const scenario = makeR3Scenario({ effectiveTaxRate: 0.30 });
+      const result = runProjection(household, scenario, 1);
+      const y1 = result.yearRows[0]!;
+
+      // taxableBase = 200_000 - 0 - 0 = 200_000; taxes = 60_000
+      expect(y1.taxesFromSalary).toBeCloseTo(60_000, -1);
+      expect(y1.netToChecking).toBeCloseTo(140_000, -1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // BUG-03: RSU vest value excluded from salary taxable base
+  // -------------------------------------------------------------------------
+  describe("BUG-03: RSU excluded from salary taxable base (no double-tax)", () => {
+    it("taxesFromRSU = rsuVestValue × withholdingRate only — not also at effectiveTaxRate", () => {
+      const brokerageId = "brokerage";
+      const household = makeR3Household({
+        accounts: [
+          { id: "trad", name: "401k", type: "TRADITIONAL_401K", owner: "PERSON_A", startingBalance: 0, includedInFIAssets: true },
+          { id: brokerageId, name: "Brokerage", type: "TAXABLE", owner: "PERSON_A", startingBalance: 0, includedInFIAssets: true },
+        ],
+        equityGrants: [
+          {
+            id: "rsu1",
+            ownerPersonId: "p1",
+            type: "RSU",
+            startYear: START_YEAR,
+            vestingTable: [{ year: START_YEAR, shares: 100 }],
+            priceAssumption: { mode: "FIXED", fixedPrice: 500 },
+            withholdingRate: 0.30,
+            destinationAccountId: brokerageId,
+            sellStrategy: "SELL_ALL",
+          },
+        ],
+      });
+      // salary = 200_000 → taxesFromSalary = 200_000 × 0.25 = 50_000
+      // rsuVestValue = 50_000 → taxesFromRSU = 50_000 × 0.30 = 15_000
+      // total taxes = 65_000 (NOT (200k+50k)×0.25 + 50k×0.30 = 77_500)
+      const scenario = makeR3Scenario({ effectiveTaxRate: 0.25 });
+      const result = runProjection(household, scenario, 1);
+      const y1 = result.yearRows[0]!;
+
+      expect(y1.rsuVestValue).toBe(50_000);
+      expect(y1.taxesFromSalary).toBeCloseTo(50_000, -1);   // 200k × 0.25
+      expect(y1.taxesFromRSU).toBeCloseTo(15_000, -1);       // 50k × 0.30 withholding only
+      expect(y1.taxes).toBeCloseTo(65_000, -1);               // NOT 77_500
+    });
+
+    it("RSU vest value included in grossIncome (display) but not in salary taxable base", () => {
+      const brokerageId = "brokerage";
+      const household = makeR3Household({
+        accounts: [
+          { id: "trad", name: "401k", type: "TRADITIONAL_401K", owner: "PERSON_A", startingBalance: 0, includedInFIAssets: true },
+          { id: brokerageId, name: "Brokerage", type: "TAXABLE", owner: "PERSON_A", startingBalance: 0, includedInFIAssets: true },
+        ],
+        equityGrants: [
+          {
+            id: "rsu1",
+            ownerPersonId: "p1",
+            type: "RSU",
+            startYear: START_YEAR,
+            vestingTable: [{ year: START_YEAR, shares: 50 }],
+            priceAssumption: { mode: "FIXED", fixedPrice: 200 },
+            withholdingRate: 0.22,
+            destinationAccountId: brokerageId,
+            sellStrategy: "SELL_ALL",
+          },
+        ],
+      });
+      const scenario = makeR3Scenario({ effectiveTaxRate: 0.25 });
+      const result = runProjection(household, scenario, 1);
+      const y1 = result.yearRows[0]!;
+
+      // grossIncome = 200k + 10k = 210k (display only)
+      expect(y1.grossIncome).toBe(210_000);
+      // salaryGross is stored separately
+      expect(y1.salaryGross).toBe(200_000);
+      // taxesFromSalary based only on 200k
+      expect(y1.taxesFromSalary).toBeCloseTo(50_000, -1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // BUG-04: Surplus cash routes to surplusDestinationAccountId
+  // -------------------------------------------------------------------------
+  describe("BUG-04: surplus cash credited to surplusDestinationAccountId", () => {
+    it("surplus appears in endingBalances of destination account", () => {
+      const destId = "checking";
+      const salary = 100_000;
+      const household = makeR3Household({
+        accounts: [
+          { id: destId, name: "Checking", type: "CHECKING", owner: "PERSON_A", startingBalance: 0, includedInFIAssets: false },
+        ],
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            birthYear: 1980,
+            income: { baseSalaryAnnual: salary, salaryGrowthRate: 0, salaryGrowthIsReal: true },
+            payroll: { payrollInvesting: [], payrollDeductionsSpending: 0 },
+          },
+        ],
+      });
+      // netToChecking = 100_000 × (1 - 0.30) = 70_000
+      // lifestyleSpend = 500 × 12 = 6_000
+      // surplus ≈ 64_000 → credited to checking
+      const scenario = makeR3Scenario({
+        effectiveTaxRate: 0.30,
+        currentMonthlySpend: 500,
+        surplusDestinationAccountId: destId,
+      });
+      const result = runProjection(household, scenario, 1);
+      const y1 = result.yearRows[0]!;
+
+      expect(y1.unallocatedSurplus).toBeGreaterThan(50_000);
+      expect(y1.endingBalances?.[destId]).toBeGreaterThan(50_000);
+      // No warning when destination is configured
+      const hasSurplusWarning = result.validation.warnings.some(
+        (w) => w.code === "SURPLUS_NO_DESTINATION"
+      );
+      expect(hasSurplusWarning).toBe(false);
+    });
+
+    it("emits SURPLUS_NO_DESTINATION warning when surplusDestinationAccountId is null", () => {
+      const household = makeR3Household({
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            birthYear: 1980,
+            income: { baseSalaryAnnual: 100_000, salaryGrowthRate: 0, salaryGrowthIsReal: true },
+            payroll: { payrollInvesting: [], payrollDeductionsSpending: 0 },
+          },
+        ],
+        accounts: [
+          { id: "trad", name: "401k", type: "TRADITIONAL_401K", owner: "PERSON_A", startingBalance: 0, includedInFIAssets: true },
+        ],
+      });
+      const scenario = makeR3Scenario({
+        effectiveTaxRate: 0.30,
+        currentMonthlySpend: 500,
+        surplusDestinationAccountId: null,
+        enableUnallocatedSurplusBalancing: true,
+      });
+      const result = runProjection(household, scenario, 1);
+      const hasSurplusWarning = result.validation.warnings.some(
+        (w) => w.code === "SURPLUS_NO_DESTINATION"
+      );
+      expect(hasSurplusWarning).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // BUG-05: Emergency fund contributions capped to roomRemaining
+  // -------------------------------------------------------------------------
+  describe("BUG-05: emergency fund contribution capped at goal − current balance", () => {
+    it("crossing year: contribution equals roomRemaining, not full planned amount", () => {
+      const efId = "ef-mm";
+      const destId = "dest-checking";
+      const efGoal = 10_000;
+      const startBalance = 8_000;
+      // Plan 500/month = 6_000/year to EF; only 2_000 of room remains
+      const household = makeR3Household({
+        accounts: [
+          { id: efId, name: "EF", type: "MONEY_MARKET", owner: "PERSON_A", startingBalance: startBalance, includedInFIAssets: false },
+          { id: destId, name: "Dest", type: "CHECKING", owner: "PERSON_A", startingBalance: 0, includedInFIAssets: false },
+        ],
+        monthlySavings: [
+          { accountId: efId, amountMonthly: 500, contributorType: "employee" as const },
+        ],
+        emergencyFundGoal: { targetAmount: efGoal, accountId: efId },
+      });
+      const scenario = makeR3Scenario({
+        effectiveTaxRate: 0.25,
+        surplusDestinationAccountId: destId,
+      });
+      const result = runProjection(household, scenario, 1);
+      const y1 = result.yearRows[0]!;
+
+      const actualContrib = y1.contributionsByAccount?.[efId] ?? 0;
+      const roomRemaining = efGoal - startBalance; // 2_000
+
+      // Contribution should be capped to roomRemaining (2_000), not 6_000
+      expect(actualContrib).toBeLessThanOrEqual(roomRemaining + 5);
+      // Ending balance = capped balance + investment growth; allow up to 10% growth
+      const endBal = y1.endingBalances?.[efId] ?? 0;
+      expect(endBal).toBeLessThan(efGoal * 1.10);
+    });
+
+    it("after goal is reached: subsequent years contribute nothing to EF", () => {
+      const efId = "ef-mm";
+      const destId = "dest-checking";
+      const household = makeR3Household({
+        accounts: [
+          { id: efId, name: "EF", type: "MONEY_MARKET", owner: "PERSON_A", startingBalance: 10_000, includedInFIAssets: false },
+          { id: destId, name: "Dest", type: "CHECKING", owner: "PERSON_A", startingBalance: 0, includedInFIAssets: false },
+        ],
+        monthlySavings: [
+          { accountId: efId, amountMonthly: 500, contributorType: "employee" as const },
+        ],
+        emergencyFundGoal: { targetAmount: 10_000, accountId: efId },
+      });
+      const scenario = makeR3Scenario({
+        effectiveTaxRate: 0.25,
+        surplusDestinationAccountId: destId,
+      });
+      const result = runProjection(household, scenario, 1);
+      const y1 = result.yearRows[0]!;
+
+      // Already at goal: roomRemaining = 0, so no contribution
+      const actualContrib = y1.contributionsByAccount?.[efId] ?? 0;
+      expect(actualContrib).toBe(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // BUG-06: Within-bucket withdrawal ordering (SMALLEST_FIRST / LARGEST_FIRST)
+  // -------------------------------------------------------------------------
+  describe("BUG-06: within-bucket withdrawal ordering", () => {
+    function makeWithdrawalHousehold() {
+      return makeR3Household({
+        accounts: [
+          { id: "small", name: "Small 401k", type: "TRADITIONAL_401K", owner: "PERSON_A", startingBalance: 20_000, includedInFIAssets: true },
+          { id: "large", name: "Large 401k", type: "TRADITIONAL_401K", owner: "PERSON_A", startingBalance: 200_000, includedInFIAssets: true },
+        ],
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            birthYear: 1960, // age 65 in 2025 → retires in 2025
+            income: { baseSalaryAnnual: 0, salaryGrowthRate: 0, salaryGrowthIsReal: true },
+            payroll: { payrollInvesting: [], payrollDeductionsSpending: 0 },
+          },
+        ],
+      });
+    }
+
+    it("SMALLEST_FIRST: drains the smaller-balance account before the larger", () => {
+      const household = makeWithdrawalHousehold();
+      const scenario = makeR3Scenario({
+        retirementStartYear: START_YEAR,
+        retireWhen: "AGE",
+        retirementAgeTarget: 65,
+        retirementMonthlySpend: 5_000, // 60k/year — exceeds small balance
+        withdrawalOrderBuckets: ["TAX_DEFERRED", "TAXABLE", "ROTH"],
+        withdrawalOrderWithinBucket: "SMALLEST_FIRST",
+        traditionalWithdrawalsTaxRate: 0,
+      });
+      const result = runProjection(household, scenario, 1);
+      const y1 = result.yearRows[0]!;
+
+      const smallW = y1.withdrawalByAccount?.["small"] ?? 0;
+      const largeW = y1.withdrawalByAccount?.["large"] ?? 0;
+      // Small (20k) is exhausted first; large covers the remainder
+      expect(smallW).toBeGreaterThan(0);                  // small is drained
+      expect(smallW).toBeCloseTo(20_000, -2);             // fully exhausted
+      expect(largeW).toBeGreaterThan(0);                   // large provides remainder
+      expect(largeW).toBeCloseTo(40_000, -2);             // 60k - 20k
+    });
+
+    it("LARGEST_FIRST: drains the larger-balance account before the smaller", () => {
+      const household = makeWithdrawalHousehold();
+      const scenario = makeR3Scenario({
+        retirementStartYear: START_YEAR,
+        retireWhen: "AGE",
+        retirementAgeTarget: 65,
+        retirementMonthlySpend: 5_000, // 60k/year — fits within large balance alone
+        withdrawalOrderBuckets: ["TAX_DEFERRED", "TAXABLE", "ROTH"],
+        withdrawalOrderWithinBucket: "LARGEST_FIRST",
+        traditionalWithdrawalsTaxRate: 0,
+      });
+      const result = runProjection(household, scenario, 1);
+      const y1 = result.yearRows[0]!;
+
+      const smallW = y1.withdrawalByAccount?.["small"] ?? 0;
+      const largeW = y1.withdrawalByAccount?.["large"] ?? 0;
+      // Large (200k) covers entire 60k; small is untouched
+      expect(largeW).toBeGreaterThan(0);                   // large is drained
+      expect(largeW).toBeCloseTo(60_000, -2);             // covers all spending
+      expect(smallW).toBe(0);                              // small not touched
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // SPEC-01: Catch-up contributions toggle
+  // -------------------------------------------------------------------------
+  describe("SPEC-01: enableCatchUpContributions toggle", () => {
+    function makeAge50Household() {
+      const tradId = "trad401k";
+      return makeR3Household({
+        accounts: [
+          { id: tradId, name: "401k", type: "TRADITIONAL_401K", owner: "PERSON_A", startingBalance: 0, includedInFIAssets: true },
+        ],
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            birthYear: 1975, // age 50 in 2025
+            income: { baseSalaryAnnual: 500_000, salaryGrowthRate: 0, salaryGrowthIsReal: true },
+            payroll: {
+              payrollInvesting: [
+                // Intentionally above any IRS limit to trigger capping
+                { accountId: tradId, amountAnnual: 40_000, contributorType: "employee" as const },
+              ],
+              payrollDeductionsSpending: 0,
+            },
+          },
+        ],
+      });
+    }
+
+    it("disabled (default): 401k employee capped at base IRS limit (~23,500 in 2025)", () => {
+      const household = makeAge50Household();
+      const scenario = makeR3Scenario({ enableCatchUpContributions: false });
+      const result = runProjection(household, scenario, 1);
+      const y1 = result.yearRows[0]!;
+
+      // IRS 2025 employee limit = 23_500; no catch-up
+      expect(y1.employeePreTaxContribs).toBeCloseTo(23_500, -2);
+    });
+
+    it("enabled (age 50): adds $7,500 standard catch-up → cap ~31,000", () => {
+      const household = makeAge50Household();
+      const scenario = makeR3Scenario({ enableCatchUpContributions: true });
+      const result = runProjection(household, scenario, 1);
+      const y1 = result.yearRows[0]!;
+
+      // IRS 2025 employee limit 23_500 + catch-up 7_500 = 31_000
+      expect(y1.employeePreTaxContribs).toBeGreaterThan(23_500 + 100);
+      expect(y1.employeePreTaxContribs).toBeCloseTo(31_000, -2);
+    });
+
+    it("enabled (age 61, SECURE 2.0 super catch-up): cap ~34,750", () => {
+      const tradId = "trad401k";
+      const household = makeR3Household({
+        accounts: [
+          { id: tradId, name: "401k", type: "TRADITIONAL_401K", owner: "PERSON_A", startingBalance: 0, includedInFIAssets: true },
+        ],
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            birthYear: 1964, // age 61 in 2025 → super catch-up
+            income: { baseSalaryAnnual: 500_000, salaryGrowthRate: 0, salaryGrowthIsReal: true },
+            payroll: {
+              payrollInvesting: [
+                { accountId: tradId, amountAnnual: 50_000, contributorType: "employee" as const },
+              ],
+              payrollDeductionsSpending: 0,
+            },
+          },
+        ],
+      });
+      const scenario = makeR3Scenario({ enableCatchUpContributions: true });
+      const result = runProjection(household, scenario, 1);
+      const y1 = result.yearRows[0]!;
+
+      // IRS 2025 limit 23_500 + SECURE 2.0 super 11_250 = 34_750
+      expect(y1.employeePreTaxContribs).toBeGreaterThan(23_500 + 100);
+      expect(y1.employeePreTaxContribs).toBeCloseTo(34_750, -2);
     });
   });
 });

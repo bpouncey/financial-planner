@@ -4,7 +4,7 @@
  */
 
 import type { ProjectionResult, YearRow } from "@/lib/model/engine";
-import type { Household } from "@/lib/types/zod";
+import type { Household, Scenario } from "@/lib/types/zod";
 
 function escapeCsv(value: string): string {
   if (/[",\n\r]/.test(value)) {
@@ -48,10 +48,25 @@ function getContribAfterTax(row: YearRow): number {
   return Math.max(0, totalContrib - payroll - rsu);
 }
 
+/** Determine emergency fund status for a given year row. */
+function getEmergencyFundStatus(
+  row: YearRow,
+  household: Household
+): "BUILDING" | "REACHED" | "COMPLETE" {
+  const efGoal = household.emergencyFundGoal;
+  if (!efGoal?.targetAmount || !efGoal?.accountId) return "COMPLETE";
+  const balance = row.endingBalances?.[efGoal.accountId] ?? 0;
+  if (balance >= efGoal.targetAmount) return "REACHED";
+  const contrib = row.contributionsByAccount?.[efGoal.accountId] ?? 0;
+  if (contrib > 0) return "BUILDING";
+  return "COMPLETE";
+}
+
 /** Build CSV string from projection with full data-contract columns. */
 export function projectionToCsv(
   projection: ProjectionResult,
-  household: Household
+  household: Household,
+  scenario?: Scenario
 ): string {
   const { yearRows, validation } = projection;
   const accounts = household.accounts;
@@ -72,6 +87,13 @@ export function projectionToCsv(
     "rsuVestValue",
     "rsuWithholding",
     "rsuNetProceeds",
+    "salaryGrossTotal",
+    "taxableIncomeBase",
+    "taxesFromSalary",
+    "taxesFromRSU",
+    "totalTaxesPaid",
+    "emergencyFundStatus",
+    "surplusDestinationId",
     "withdrawalsTraditional",
     "withdrawalsRoth",
     "withdrawalsTaxable",
@@ -107,6 +129,16 @@ export function projectionToCsv(
     const portfolioEnd = row.netWorth;
     const contribAfterTax = getContribAfterTax(row);
 
+    // Derived tax tracing fields
+    const taxesFromSalary = row.taxesFromSalary ?? row.taxesPayroll ?? 0;
+    const taxesFromRSU = row.taxesFromRSU ?? row.rsuWithholding ?? 0;
+    const totalTaxesPaid = taxesFromSalary + taxesFromRSU;
+    const salaryGrossTotal = row.salaryGross ?? row.grossIncome;
+    const taxableIncomeBase =
+      salaryGrossTotal -
+      (row.employeePreTaxContribs ?? 0) -
+      (row.taxesAdditional ?? 0); // best approximation: salaryGross - preТax
+
     const cells: string[] = [
       formatCsvNumber(row.year),
       row.phase ?? "accumulation",
@@ -122,6 +154,13 @@ export function projectionToCsv(
       formatCsvNumber(row.rsuVestValue ?? 0),
       formatCsvNumber(row.rsuWithholding ?? 0),
       formatCsvNumber(row.rsuNetProceeds ?? 0),
+      formatCsvNumber(salaryGrossTotal),
+      formatCsvNumber(taxableIncomeBase),
+      formatCsvNumber(taxesFromSalary),
+      formatCsvNumber(taxesFromRSU),
+      formatCsvNumber(totalTaxesPaid),
+      getEmergencyFundStatus(row, household),
+      scenario?.surplusDestinationAccountId ?? "NONE",
       formatCsvNumber(row.withdrawalsTraditional ?? 0),
       formatCsvNumber(row.withdrawalsRoth ?? 0),
       formatCsvNumber(row.withdrawalsTaxable ?? 0),

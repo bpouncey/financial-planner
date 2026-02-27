@@ -26,6 +26,12 @@ const LIMITS_BY_YEAR: Record<
   2027: { "401k": 24500, "401kCombined": 72000, ira: 7500, hsa: 8750 }, // placeholder
 };
 
+/** IRS catch-up contribution amounts (age 50+). Standard catch-up applies at 50-59 and 64+.
+ * SECURE 2.0 "super catch-up" applies at 60-63 for 401k/403b. IRA catch-up applies at 50+. */
+const CATCH_UP_401K_STANDARD = 7500;   // age 50-59 and 64+
+const CATCH_UP_401K_SUPER = 11250;     // age 60-63 (SECURE 2.0)
+const CATCH_UP_IRA = 1000;             // age 50+
+
 const KNOWN_YEARS = Object.keys(LIMITS_BY_YEAR).map(Number);
 const MIN_YEAR = Math.min(...KNOWN_YEARS);
 const MAX_YEAR = Math.max(...KNOWN_YEARS);
@@ -320,8 +326,24 @@ export function capContributionsAtIRSLimits(
   const iraLimit = limits.ira;
   const hsaLimit = limits.hsa;
 
+  const catchUpEnabled = scenario.enableCatchUpContributions === true;
+
   for (const person of household.people) {
     const personId = person.id;
+
+    // Compute person's age for catch-up eligibility
+    const personAge = person.birthYear != null ? year - person.birthYear : null;
+    const effective401kEmployeeLimit = (() => {
+      if (!catchUpEnabled || personAge == null) return employeeLimit;
+      if (personAge >= 60 && personAge <= 63) return employeeLimit + CATCH_UP_401K_SUPER;
+      if (personAge >= 50) return employeeLimit + CATCH_UP_401K_STANDARD;
+      return employeeLimit;
+    })();
+    const effectiveIraLimit = (() => {
+      if (!catchUpEnabled || personAge == null) return iraLimit;
+      if (personAge >= 50) return iraLimit + CATCH_UP_IRA;
+      return iraLimit;
+    })();
 
     // 401k/403b: cap employee deferral (shared across Trad+Roth+403b); combined limit (employee+employer) via effective cap
     const k401Accounts = household.accounts.filter(
@@ -339,7 +361,7 @@ export function capContributionsAtIRSLimits(
       }
       const effectiveEmployeeCap = Math.max(
         0,
-        Math.min(employeeLimit, combinedLimit - employerTotal)
+        Math.min(effective401kEmployeeLimit, combinedLimit - employerTotal)
       );
       if (employeeTotal > effectiveEmployeeCap && employeeTotal > 0) {
         const scale = effectiveEmployeeCap / employeeTotal;
@@ -363,8 +385,8 @@ export function capContributionsAtIRSLimits(
       for (const a of iraAccounts) {
         iraTotal += result[a.id] ?? 0;
       }
-      if (iraTotal > iraLimit && iraTotal > 0) {
-        const scale = iraLimit / iraTotal;
+      if (iraTotal > effectiveIraLimit && iraTotal > 0) {
+        const scale = effectiveIraLimit / iraTotal;
         for (const a of iraAccounts) {
           result[a.id] = (result[a.id] ?? 0) * scale;
         }
