@@ -3972,4 +3972,103 @@ describe("Engine", () => {
       expect(y2029Nominal!.grossIncome).toBeGreaterThan(y2029Real!.grossIncome);
     });
   });
+
+  describe("BUG-05 — Emergency Fund Contribution Cap", () => {
+    const mmId = "ally-mm";
+
+    function makeEFHousehold(startingBalance: number): Household {
+      return {
+        id: "hh-ef",
+        name: "EF Household",
+        startYear: START_YEAR,
+        currency: "USD",
+        outOfPocketInvesting: [],
+        events: [],
+        equityGrants: [],
+        monthlySavings: [
+          { accountId: mmId, amountMonthly: 1500 },
+        ],
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            income: { baseSalaryAnnual: 150_000, salaryGrowthRate: 0, salaryGrowthIsReal: true },
+            payroll: { payrollInvesting: [], payrollDeductionsSpending: 0 },
+          },
+        ],
+        accounts: [
+          {
+            id: mmId,
+            name: "Ally MM",
+            type: "MONEY_MARKET",
+            owner: "PERSON_A",
+            startingBalance,
+            includedInFIAssets: false,
+            apy: 0,
+          },
+        ],
+        scenarios: [],
+        emergencyFundGoal: { targetAmount: 50_000, accountId: mmId },
+      };
+    }
+
+    // NOMINAL mode + nominalReturn=0 + apy=0 → true zero growth for clean numeric assertions
+    const baseScenario = createBaseScenario({
+      modelingMode: "NOMINAL",
+      nominalReturn: 0,
+      inflation: 0.03,
+      takeHomeAnnual: 100_000,
+      currentMonthlySpend: 3_000,
+      retirementMonthlySpend: 3_000,
+    });
+
+    it("caps contribution at room remaining when balance is near goal (BUG-05)", () => {
+      // allyMM_start = 48_418 → roomRemaining = 50_000 - 48_418 = 1_582
+      // plannedAnnualContrib = 1_500 * 12 = 18_000
+      // actualContrib = min(18_000, 1_582) = 1_582
+      const household = makeEFHousehold(48_418);
+      const result = runProjection(household, baseScenario, 1);
+      const y0 = result.yearRows[0];
+
+      expect(y0.contributionsByAccount[mmId]).toBeCloseTo(1_582, 0);
+    });
+
+    it("ending balance does not overshoot goal by more than growth (BUG-05)", () => {
+      // With APY=0, end = 48_418 + 1_582 = 50_000 exactly
+      const household = makeEFHousehold(48_418);
+      const result = runProjection(household, baseScenario, 1);
+      const y0 = result.yearRows[0];
+
+      expect(y0.endingBalances[mmId]).toBeCloseTo(50_000, 0);
+    });
+
+    it("excess contribution routes to unallocatedSurplus (BUG-05)", () => {
+      // excess = 18_000 - 1_582 = 16_418
+      const household = makeEFHousehold(48_418);
+      const result = runProjection(household, baseScenario, 1);
+      const y0 = result.yearRows[0];
+
+      expect(y0.unallocatedSurplus).toBeCloseTo(16_418, 0);
+    });
+
+    it("zeroes contribution when balance already meets or exceeds goal (BUG-05)", () => {
+      // balance = 55_000 >= goal = 50_000 → contribution = 0
+      const household = makeEFHousehold(55_000);
+      const result = runProjection(household, baseScenario, 1);
+      const y0 = result.yearRows[0];
+
+      expect(y0.contributionsByAccount[mmId]).toBe(0);
+    });
+
+    it("contributions are zero in subsequent years after goal is reached (BUG-05)", () => {
+      // Start just below goal, get capped in year 0 (reaching goal), then $0 after
+      const household = makeEFHousehold(48_418);
+      const result = runProjection(household, baseScenario, 3);
+
+      const y1 = result.yearRows[1];
+      const y2 = result.yearRows[2];
+      expect(y1.contributionsByAccount[mmId]).toBe(0);
+      expect(y2.contributionsByAccount[mmId]).toBe(0);
+    });
+  });
 });
