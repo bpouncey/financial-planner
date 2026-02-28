@@ -694,6 +694,7 @@ export function runProjection(
   let coastFiYear: number | null = null;
   let firstYearIncome = 0;
   let firstYearSaving = 0;
+  let surplusWarningEmitted = false;
 
   // Always use bucket-based withdrawal order (TAXABLE → TAX_DEFERRED → ROTH).
   // ROTH bucket includes both ROTH_401K and ROTH_IRA.
@@ -1015,6 +1016,25 @@ export function runProjection(
       netCashSurplus =
         netToChecking - spending - totalOopContrib - totalSavingsContrib;
 
+      // Track unallocated surplus and route to configured destination account.
+      // netCashSurplus is cash remaining after spending and after-tax contributions.
+      // Without routing, this money vanishes from the model and is excluded from net worth.
+      const unallocatedSurplusAmount = Math.max(0, netCashSurplus);
+      if (unallocatedSurplusAmount > RECONCILIATION_ROUNDING_THRESHOLD) {
+        rowUnallocatedSurplus = unallocatedSurplusAmount;
+        const surplusDestId = scenario.surplusDestinationAccountId;
+        if (surplusDestId) {
+          contributionsByAccount[surplusDestId] =
+            (contributionsByAccount[surplusDestId] ?? 0) + unallocatedSurplusAmount;
+        } else if (!surplusWarningEmitted) {
+          validationWarnings.push({
+            code: "UNALLOCATED_SURPLUS",
+            message: `Year ${year}: $${Math.round(unallocatedSurplusAmount).toLocaleString()} unallocated surplus not tracked in any account. Configure surplusDestinationAccountId on the scenario to route this cash.`,
+          });
+          surplusWarningEmitted = true;
+        }
+      }
+
       // Events for this year (for reconciliation)
       const yearEvents = (household.events ?? []).filter((e) => e.year === year);
       const eventInflows = yearEvents
@@ -1047,7 +1067,10 @@ export function runProjection(
         enableUnallocatedSurplusBalancing &&
         reconciliationDelta > RECONCILIATION_ROUNDING_THRESHOLD
       ) {
-        rowUnallocatedSurplus = reconciliationDelta;
+        // Only set rowUnallocatedSurplus if not already set by the surplus routing above
+        if (rowUnallocatedSurplus == null) {
+          rowUnallocatedSurplus = reconciliationDelta;
+        }
         reconciliationDelta = 0;
       } else {
         // Optional: route overflow to taxable when autoFixOverflow enabled (legacy)

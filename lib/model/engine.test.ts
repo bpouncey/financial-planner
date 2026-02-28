@@ -4066,4 +4066,178 @@ describe("Engine", () => {
       expect(y2029Nominal!.grossIncome).toBeGreaterThan(y2029Real!.grossIncome);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Surplus cash tracking (BUG-03 fix)
+  // ---------------------------------------------------------------------------
+  describe("Surplus cash tracking", () => {
+    /**
+     * Scenario from the bug report:
+     *   netToChecking = 211374
+     *   spending      = 82236   (currentMonthlySpend * 12 = 6853 * 12)
+     *   contribAfterTax = 18000 (emergency fund via monthlySavings, 1500/month)
+     *   rsuNetProceeds  = 0
+     *   unallocatedSurplus = 211374 - 82236 - 18000 = 111138
+     */
+    const SURPLUS_MONTHLY_SPEND = 6853; // 82236 / 12
+    const SURPLUS_NET_TO_CHECKING = 211374;
+
+    function createSurplusHousehold(surplusDestinationAccountId?: string) {
+      const household: Household = {
+        id: "hh-surplus",
+        name: "Surplus Test",
+        startYear: 2026,
+        currency: "USD",
+        people: [
+          {
+            id: "p1",
+            name: "Person A",
+            income: { baseSalaryAnnual: 300000, salaryGrowthRate: 0, salaryGrowthIsReal: true },
+            payroll: { payrollInvesting: [], payrollDeductionsSpending: 0 },
+          },
+        ],
+        accounts: [
+          {
+            id: "acc-emergency",
+            name: "Emergency Fund",
+            type: "MONEY_MARKET",
+            owner: "JOINT",
+            startingBalance: 0,
+            includedInFIAssets: false,
+          },
+          {
+            id: "acc-brokerage",
+            name: "Taxable Brokerage",
+            type: "TAXABLE",
+            owner: "JOINT",
+            startingBalance: 0,
+            includedInFIAssets: true,
+          },
+        ],
+        scenarios: [],
+        outOfPocketInvesting: [],
+        monthlySavings: [
+          { accountId: "acc-emergency", amountMonthly: 1500 }, // 18000/year
+        ],
+        events: [],
+        equityGrants: [],
+      };
+      return household;
+    }
+
+    function createSurplusScenario(surplusDestinationAccountId?: string) {
+      return createBaseScenario({
+        takeHomeAnnual: SURPLUS_NET_TO_CHECKING,
+        takeHomeDefinition: "NET_TO_CHECKING",
+        effectiveTaxRate: null,
+        currentMonthlySpend: SURPLUS_MONTHLY_SPEND,
+        retirementMonthlySpend: 5000,
+        swr: 0.04,
+        surplusDestinationAccountId,
+      });
+    }
+
+    it("correctly calculates unallocatedSurplus = netToChecking - spending - contribAfterTax", () => {
+      const household = createSurplusHousehold();
+      const scenario = createSurplusScenario("acc-brokerage");
+      const result = runProjection(household, scenario, 1);
+
+      const row = result.yearRows[0]!;
+      // 211374 - 82236 - 18000 = 111138
+      expect(row.unallocatedSurplus).toBeCloseTo(111138, -1);
+    });
+
+    it("routes surplus to surplusDestinationAccountId when configured", () => {
+      const household = createSurplusHousehold();
+      const scenario = createSurplusScenario("acc-brokerage");
+      const result = runProjection(household, scenario, 1);
+
+      const row = result.yearRows[0]!;
+      // Brokerage should receive 111138 as contribution
+      expect(row.contributionsByAccount["acc-brokerage"]).toBeCloseTo(111138, -1);
+    });
+
+    it("includes routed surplus in net worth", () => {
+      const household = createSurplusHousehold();
+      const scenario = createSurplusScenario("acc-brokerage");
+      const result = runProjection(household, scenario, 1);
+
+      const row = result.yearRows[0]!;
+      // Net worth must include the brokerage balance (surplus + growth)
+      const brokerageEnd = row.endingBalances["acc-brokerage"] ?? 0;
+      expect(brokerageEnd).toBeGreaterThan(100_000);
+      expect(row.netWorth).toBeGreaterThanOrEqual(brokerageEnd);
+      expect(row.investedAssets).toBeCloseTo(brokerageEnd, 0);
+    });
+
+    it("emits UNALLOCATED_SURPLUS warning when no destination configured", () => {
+      const household = createSurplusHousehold();
+      const scenario = createSurplusScenario(); // no surplusDestinationAccountId
+      const result = runProjection(household, scenario, 3);
+
+      const warning = result.validation.warnings.find(
+        (w) => w.code === "UNALLOCATED_SURPLUS"
+      );
+      expect(warning).toBeDefined();
+      expect(warning!.message).toContain("surplusDestinationAccountId");
+    });
+
+    it("emits UNALLOCATED_SURPLUS warning only once across multiple years", () => {
+      const household = createSurplusHousehold();
+      const scenario = createSurplusScenario(); // no destination
+      const result = runProjection(household, scenario, 10);
+
+      const warnings = result.validation.warnings.filter(
+        (w) => w.code === "UNALLOCATED_SURPLUS"
+      );
+      expect(warnings).toHaveLength(1);
+    });
+
+    it("does NOT emit UNALLOCATED_SURPLUS warning when destination is configured", () => {
+      const household = createSurplusHousehold();
+      const scenario = createSurplusScenario("acc-brokerage");
+      const result = runProjection(household, scenario, 5);
+
+      const warning = result.validation.warnings.find(
+        (w) => w.code === "UNALLOCATED_SURPLUS"
+      );
+      expect(warning).toBeUndefined();
+    });
+
+    it("surplus routing makes FI reachable vs unrouted scenario which never reaches FI", () => {
+      const householdWithDest = createSurplusHousehold();
+      const scenarioWithDest = createSurplusScenario("acc-brokerage");
+      const resultWithDest = runProjection(householdWithDest, scenarioWithDest, 40);
+
+      const householdNoDest = createSurplusHousehold();
+      const scenarioNoDest = createSurplusScenario(); // surplus lost
+      const resultNoDest = runProjection(householdNoDest, scenarioNoDest, 40);
+
+      // With routing, invested assets grow much faster
+      const lastWithDest = resultWithDest.yearRows[resultWithDest.yearRows.length - 1]!;
+      const lastNoDest = resultNoDest.yearRows[resultNoDest.yearRows.length - 1]!;
+      expect(lastWithDest.investedAssets).toBeGreaterThan(lastNoDest.investedAssets);
+
+      // Routing should allow FI to be reached within the horizon
+      expect(resultWithDest.fiYear).not.toBeNull();
+    });
+
+    it("surplus account satisfies End = Begin + Contrib + Growth invariant", () => {
+      const household = createSurplusHousehold();
+      const scenario = createSurplusScenario("acc-brokerage");
+      const result = runProjection(household, scenario, 5);
+
+      for (let i = 0; i < result.yearRows.length; i++) {
+        const row = result.yearRows[i]!;
+        const prev = i > 0 ? result.yearRows[i - 1] : null;
+        const begin =
+          prev?.endingBalances["acc-brokerage"] ??
+          household.accounts.find((a) => a.id === "acc-brokerage")!.startingBalance;
+        const contrib = row.contributionsByAccount["acc-brokerage"] ?? 0;
+        const growth = row.growthByAccount["acc-brokerage"] ?? 0;
+        const end = row.endingBalances["acc-brokerage"] ?? 0;
+        expect(end).toBeCloseTo(begin + contrib + growth, 0);
+      }
+    });
+  });
 });

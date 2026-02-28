@@ -48,7 +48,7 @@ function buildHeaders(
   for (const a of accounts) {
     headers.push(`${escapeCsvField(a.name)} (end)`);
   }
-  headers.push("Net worth", "Invested");
+  headers.push("Unallocated surplus", "Net worth", "Invested");
   return headers;
 }
 
@@ -86,7 +86,7 @@ function rowToCells(
   for (const a of accounts) {
     cells.push(row.endingBalances[a.id] ?? 0);
   }
-  cells.push(row.netWorth, row.investedAssets);
+  cells.push(row.unallocatedSurplus ?? 0, row.netWorth, row.investedAssets);
   return cells;
 }
 

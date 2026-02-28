@@ -264,6 +264,8 @@ export const ScenarioSchema = z.object({
   enableUnallocatedSurplusBalancing: z.boolean().optional().default(true),
   /** Frequency for unallocated surplus balancing. Phase 1: both treated as annual. */
   unallocatedSurplusFrequency: z.enum(["Monthly", "Annual"]).optional().default("Monthly"),
+  /** Account to receive unallocated surplus cash (netToChecking minus spending and contributions). When set, surplus is invested here annually. When unset, an UNALLOCATED_SURPLUS validation warning is shown. */
+  surplusDestinationAccountId: z.string().optional(),
   /** Per-grant overrides: exclude grants from this scenario when isEnabled: false. */
   equityGrantOverrides: z
     .array(
