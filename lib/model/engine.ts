@@ -949,15 +949,21 @@ export function runProjection(
       let savingsContrib = getMonthlySavingsContributions(year);
       const rsuProceeds = rsuBreakdown.byAccount;
 
-      // Stop funding emergency fund goal account once it reaches target
+      // Cap emergency fund goal account contributions at room remaining to goal
       const efGoal = household.emergencyFundGoal;
-      if (
-        efGoal?.targetAmount != null &&
-        efGoal?.accountId != null &&
-        (balances[efGoal.accountId] ?? 0) >= efGoal.targetAmount
-      ) {
-        oopContrib = { ...oopContrib, [efGoal.accountId]: 0 };
-        savingsContrib = { ...savingsContrib, [efGoal.accountId]: 0 };
+      if (efGoal?.targetAmount != null && efGoal?.accountId != null) {
+        const efAccountId = efGoal.accountId;
+        const currentBalance = balances[efAccountId] ?? 0;
+        const roomRemaining = Math.max(0, efGoal.targetAmount - currentBalance);
+        const plannedSavings = savingsContrib[efAccountId] ?? 0;
+        const plannedOop = oopContrib[efAccountId] ?? 0;
+        const totalPlanned = plannedSavings + plannedOop;
+        if (totalPlanned > roomRemaining) {
+          const cappedSavings = Math.max(0, Math.min(plannedSavings, roomRemaining));
+          const cappedOop = Math.max(0, roomRemaining - cappedSavings);
+          savingsContrib = { ...savingsContrib, [efAccountId]: cappedSavings };
+          oopContrib = { ...oopContrib, [efAccountId]: cappedOop };
+        }
       }
 
       // Merge raw contributions, then cap at IRS limits (use capped for cashflow)
